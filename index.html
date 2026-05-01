@@ -93,6 +93,18 @@
 
   /* Loading overlay */
   .loading-row td { opacity: 0.5; }
+
+  /* Header filter dropdown */
+  .filter-btn { background:none; border:none; cursor:pointer; padding:0 4px; font-size:10px; vertical-align:middle; opacity:0.5; transition:opacity .15s; }
+  .filter-btn:hover { opacity:1; }
+  .filter-btn.active { opacity:1; color:var(--primary); }
+  .filter-dropdown { display:none; position:absolute; top:100%; left:0; z-index:100; background:#fff; border:1px solid var(--border); border-radius:8px; box-shadow:0 4px 16px rgba(0,0,0,.12); min-width:160px; max-height:240px; overflow-y:auto; padding:6px 0; }
+  .filter-dropdown.show { display:block; }
+  .filter-dropdown-item { display:flex; align-items:center; gap:8px; padding:6px 12px; cursor:pointer; font-size:13px; }
+  .filter-dropdown-item:hover { background:#f3f4f6; }
+  .filter-dropdown-item input[type=checkbox] { margin:0; }
+  .filter-dropdown-item .badge { font-size:11px; color:var(--text-secondary); margin-left:auto; }
+  .th-wrap { position:relative; }
 </style>
 </head>
 <body>
@@ -137,6 +149,12 @@
           <option value="FEE">手续费/年费</option>
           <option value="CASH_ADVANCE">取现</option>
           <option value="OTHER">其他</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>币种</label>
+        <select id="f-currency">
+          <option value="">全部</option>
         </select>
       </div>
       <div class="form-group">
@@ -192,7 +210,7 @@
           <tr>
             <th>银行</th>
             <th>持卡人</th>
-            <th>卡号</th>
+            <th class="th-wrap">卡号<button class="filter-btn" id="card-filter-btn" onclick="toggleCardFilter()">▼</button><div class="filter-dropdown" id="card-filter-dropdown"></div></th>
             <th>交易日</th>
             <th>记账日</th>
             <th>描述</th>
@@ -214,6 +232,8 @@ const PAGE_SIZE = 50;
 let currentOffset = 0;
 let currentTotal = 0;
 let isAiMode = false;
+let selectedCards = new Set();           // 卡号筛选
+let currentBankForCards = '';            // 当前选中银行（用于卡号列表）
 
 const BANK_NAMES = {
   ABC: '农行', BOCOM: '交行', CCB: '建行', CGB: '广发',
@@ -241,13 +261,15 @@ async function api(url) {
 
 async function loadMeta() {
   try {
-    const [cardholders, banks] = await Promise.all([
+    const [cardholders, banks, currencies] = await Promise.all([
       api('/api/cardholders'),
       api('/api/banks'),
+      api('/api/currencies'),
     ]);
 
     const opts = v => [{v:'',t:'全部'}, ...v.map(x=>({v:x,t:x}))];
     fillSelect('f-cardholder', opts(cardholders));
+    fillSelect('f-currency', opts(currencies));
 
     const bankOpts = [{v:'',t:'全部'}];
     for (const b of banks) {
@@ -285,11 +307,71 @@ function fillSelect(id, opts) {
 }
 
 function resetFilters() {
-  document.querySelectorAll('#f-cardholder,#f-bank,#f-type').forEach(e => e.value = '');
+  document.querySelectorAll('#f-cardholder,#f-bank,#f-type,#f-currency').forEach(e => e.value = '');
   document.querySelectorAll('#f-min-amt,#f-max-amt,#f-start,#f-end,#f-cycle').forEach(e => e.value = '');
   isAiMode = false;
   doSearch(0);
 }
+
+// ============ 卡号筛选 ============
+
+function toggleCardFilter() {
+  const dd = document.getElementById('card-filter-dropdown');
+  dd.classList.toggle('show');
+  document.getElementById('card-filter-btn').classList.toggle('active', dd.classList.contains('show'));
+  if (dd.classList.contains('show')) renderCardFilter();
+}
+
+function closeCardFilter(e) {
+  if (!e.target.closest('.th-wrap')) {
+    document.getElementById('card-filter-dropdown').classList.remove('show');
+    document.getElementById('card-filter-btn').classList.remove('active');
+  }
+}
+document.addEventListener('click', closeCardFilter);
+
+async function renderCardFilter() {
+  const bankCode = document.getElementById('f-bank').value;
+  const url = bankCode ? '/api/cards?bank_code=' + encodeURIComponent(bankCode) : '/api/cards';
+  try {
+    const cards = await api(url);
+    const dd = document.getElementById('card-filter-dropdown');
+    if (!cards || cards.length === 0) {
+      dd.innerHTML = '<div style="padding:10px;color:#999;font-size:12px;">无卡号数据</div>';
+      return;
+    }
+    const allSelected = cards.every(c => selectedCards.has(c.card_last4));
+    let html = `<div class="filter-dropdown-item" onclick="event.stopPropagation();toggleAllCards()">
+      <input type="checkbox" ${selectedCards.size === 0 || allSelected ? 'checked' : ''}> <b>全选</b></div><hr style="margin:2px 0;">`;
+
+    for (const card of cards) {
+      const checked = selectedCards.has(card.card_last4);
+      html += `<div class="filter-dropdown-item" onclick="event.stopPropagation();toggleCard('${card.card_last4}')">
+        <input type="checkbox" ${checked || selectedCards.size === 0 ? 'checked' : ''}>
+        ****${card.card_last4} <span class="badge">${card.count}笔</span></div>`;
+    }
+    dd.innerHTML = html;
+  } catch (e) { /* ignore */ }
+}
+
+function toggleCard(cardLast4) {
+  if (selectedCards.has(cardLast4)) selectedCards.delete(cardLast4);
+  else selectedCards.add(cardLast4);
+  renderCardFilter();
+  doSearch(0);
+}
+
+function toggleAllCards() {
+  selectedCards.clear();
+  doSearch(0);
+}
+
+function getCardFilterParam() {
+  if (selectedCards.size === 0) return '';
+  return [...selectedCards].join(',');
+}
+
+// ============ 搜索 ============
 
 function getParams(offset = 0) {
   const p = new URLSearchParams();
@@ -297,11 +379,13 @@ function getParams(offset = 0) {
   if (f('f-cardholder')) p.set('cardholder', f('f-cardholder'));
   if (f('f-bank')) p.set('bank_code', f('f-bank'));
   if (f('f-type')) p.set('trans_type', f('f-type'));
+  if (f('f-currency')) p.set('currency', f('f-currency'));
   const minAmt = f('f-min-amt'); if (minAmt) p.set('min_amount', minAmt);
   const maxAmt = f('f-max-amt'); if (maxAmt) p.set('max_amount', maxAmt);
   const start = f('f-start'); if (start) p.set('start_date', start);
   const end = f('f-end'); if (end) p.set('end_date', end);
   const cycle = f('f-cycle'); if (cycle) p.set('bill_cycle', cycle);
+  const cl4 = getCardFilterParam(); if (cl4) p.set('card_last4', cl4);
   p.set('limit', PAGE_SIZE);
   p.set('offset', offset);
   return p;

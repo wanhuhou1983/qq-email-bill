@@ -114,6 +114,12 @@ def build_whereClause(params: dict) -> tuple[str, list]:
         conditions.append("AND bank_code = %s")
         values.append(params["bank_code"])
 
+    if params.get("card_last4"):
+        cards = params["card_last4"].split(",")
+        placeholders = ",".join(["%s"] * len(cards))
+        conditions.append(f"AND card_last4 IN ({placeholders})")
+        values.extend(cards)
+
     if params.get("trans_type") == "EXPENSE":
         conditions.append("AND amount > 0")
     elif params.get("trans_type") == "INCOME":
@@ -121,6 +127,10 @@ def build_whereClause(params: dict) -> tuple[str, list]:
     elif params.get("trans_type"):
         conditions.append("AND trans_type = %s")
         values.append(params["trans_type"])
+
+    if params.get("currency"):
+        conditions.append("AND currency = %s")
+        values.append(params["currency"])
 
     if params.get("bill_cycle"):
         conditions.append("AND EXISTS (SELECT 1 FROM credit_card_bills b WHERE b.id = t.bill_id AND b.bill_cycle = %s)")
@@ -165,6 +175,8 @@ def search(
     cycle_end: Optional[date] = Query(None, description="交易日期截止"),
     bill_cycle: Optional[str] = Query(None, description="账期(YYYY-MM格式，如2026-04)"),
     trans_type: Optional[str] = Query(None, description="交易类型: EXPENSE/INCOME/SPEND/REPAY..."),
+    currency: Optional[str] = Query(None, description="币种: CNY/USD/HKD..."),
+    card_last4: Optional[str] = Query(None, description="卡号末4位,多卡逗号分隔"),
     limit: int = Query(100, le=500),
     offset: int = Query(0, ge=0),
 ):
@@ -181,6 +193,8 @@ def search(
         "bank_code": bank_code,
         "bill_cycle": bill_cycle,
         "trans_type": trans_type,
+        "currency": currency,
+        "card_last4": card_last4,
     }
     where_sql, values = build_whereClause(params)
 
@@ -279,6 +293,44 @@ def get_cardholders():
             SELECT DISTINCT cardholder FROM credit_card_transactions
             WHERE cardholder IS NOT NULL
             ORDER BY cardholder
+        """)
+        rows = cur.fetchall()
+        return [r[0] for r in rows if r[0]]
+    finally:
+        cur.close()
+        conn.close()
+
+
+@app.get("/api/cards")
+def get_cards(bank_code: Optional[str] = Query(None)):
+    """获取指定银行下的卡号末4位列表"""
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        sql = "SELECT DISTINCT card_last4, COUNT(*) as cnt FROM credit_card_transactions WHERE card_last4 IS NOT NULL AND card_last4 != ''"
+        vals = []
+        if bank_code:
+            sql += " AND bank_code = %s"
+            vals.append(bank_code)
+        sql += " GROUP BY card_last4 ORDER BY card_last4"
+        cur.execute(sql, vals)
+        rows = cur.fetchall()
+        return [{"card_last4": r[0], "count": r[1]} for r in rows]
+    finally:
+        cur.close()
+        conn.close()
+
+
+@app.get("/api/currencies")
+def get_currencies():
+    """获取所有币种"""
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            SELECT DISTINCT currency FROM credit_card_transactions
+            WHERE currency IS NOT NULL AND currency != ''
+            ORDER BY currency
         """)
         rows = cur.fetchall()
         return [r[0] for r in rows if r[0]]
@@ -398,6 +450,8 @@ def export_excel(
     bank_code: Optional[str] = Query(None),
     bill_cycle: Optional[str] = Query(None),
     trans_type: Optional[str] = Query(None),
+    currency: Optional[str] = Query(None),
+    card_last4: Optional[str] = Query(None),
 ):
     """导出当前筛选结果为 Excel"""
     from fastapi.responses import StreamingResponse
