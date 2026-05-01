@@ -27,3 +27,20 @@ boc_output/
 
 # Git
 qq-email-bill.git/
+
+# Old scripts (Python gen scripts, debug files)
+*_gen.py
+import_zheshang.py
+*_debug_*
+_debug_*
+debug-*.cjs
+decode-*.cjs
+*boc_*
+*_raw.eml
+*_raw.html
+*_sample.eml
+*_latest.html
+*zheshang_*.html
+*zheshang_*.eml
+*zheshang_qp.txt
+*icbc_*

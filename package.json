@@ -1,5 +1,6 @@
 {
   "dependencies": {
+    "iconv-lite": "^0.7.2",
     "imapflow": "^1.3.3",
     "pg": "^8.20.0"
   }
