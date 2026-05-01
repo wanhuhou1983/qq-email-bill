@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>信用卡账单查询系统</title>
+<style>
+  :root {
+    --bg: #f0f2f5;
+    --card: #ffffff;
+    --primary: #2563eb;
+    --primary-dark: #1d4ed8;
+    --danger: #dc2626;
+    --success: #16a34a;
+    --text: #1f2937;
+    --text-secondary: #6b7280;
+    --border: #e5e7eb;
+    --radius: 10px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--bg); color: var(--text); font-size: 14px; }
+  .container { max-width: 1200px; margin: 0 auto; padding: 24px 16px; }
+
+  /* Header */
+  header { background: var(--primary); color: #fff; padding: 20px 24px; border-radius: var(--radius); margin-bottom: 20px; display: flex; align-items: center; gap: 12px; }
+  header h1 { font-size: 20px; font-weight: 700; }
+  header .badge { background: rgba(255,255,255,0.2); padding: 4px 12px; border-radius: 20px; font-size: 12px; }
+
+  /* Stat cards */
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 20px; }
+  .stat-card { background: var(--card); border-radius: var(--radius); padding: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+  .stat-card .label { color: var(--text-secondary); font-size: 12px; margin-bottom: 4px; }
+  .stat-card .value { font-size: 22px; font-weight: 700; color: var(--primary); }
+  .stat-card .value.neg { color: var(--success); }
+
+  /* Search panel */
+  .panel { background: var(--card); border-radius: var(--radius); padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); margin-bottom: 16px; }
+  .panel-title { font-size: 15px; font-weight: 600; margin-bottom: 14px; color: var(--text); display: flex; align-items: center; gap: 6px; }
+  .search-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; }
+  .form-group { display: flex; flex-direction: column; gap: 4px; }
+  .form-group label { font-size: 12px; color: var(--text-secondary); font-weight: 500; }
+  .form-group input, .form-group select { padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 13px; outline: none; transition: border-color 0.15s; }
+  .form-group input:focus, .form-group select:focus { border-color: var(--primary); }
+  .form-row { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; }
+  .btn { padding: 8px 18px; border-radius: 6px; font-size: 13px; font-weight: 500; cursor: pointer; border: none; transition: all 0.15s; }
+  .btn-primary { background: var(--primary); color: #fff; }
+  .btn-primary:hover { background: var(--primary-dark); }
+  .btn-secondary { background: #f3f4f6; color: var(--text); }
+  .btn-secondary:hover { background: #e5e7eb; }
+  .btn-ai { background: #7c3aed; color: #fff; }
+  .btn-ai:hover { background: #6d28d9; }
+
+  /* AI search */
+  .ai-area { margin-top: 12px; display: flex; gap: 10px; }
+  .ai-area input { flex: 1; padding: 9px 12px; border: 1px solid var(--border); border-radius: 6px; font-size: 13px; outline: none; }
+  .ai-area input:focus { border-color: #7c3aed; }
+  .ai-area input::placeholder { color: #9ca3af; }
+
+  /* Results table */
+  .results-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+  .results-header span { font-size: 13px; color: var(--text-secondary); }
+  .table-wrap { overflow-x: auto; border-radius: var(--radius); border: 1px solid var(--border); }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  thead { background: #f8fafc; }
+  th { padding: 10px 12px; text-align: left; font-weight: 600; color: var(--text-secondary); font-size: 12px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  td { padding: 10px 12px; border-bottom: 1px solid #f3f4f6; vertical-align: middle; }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: #f8fafc; }
+  .amount { font-weight: 600; font-variant-numeric: tabular-nums; }
+  .amount.pos { color: var(--danger); }
+  .amount.neg { color: var(--success); }
+  .tag { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 500; }
+  .tag-S { background: #fef2f2; color: #dc2626; }
+  .tag-R { background: #f0fdf4; color: #16a34a; }
+  .tag-D { background: #f0fdf4; color: #16a34a; }
+  .tag-F { background: #fef3c7; color: #d97706; }
+  .tag-I { background: #eff6ff; color: #2563eb; }
+  .tag-O { background: #f3f4f6; color: #6b7280; }
+  .bank-tag { font-weight: 600; font-size: 12px; }
+  .date-str { color: var(--text-secondary); font-size: 12px; }
+  .desc-text { max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .desc-text:hover { white-space: normal; word-break: break-all; }
+  .pagination { display: flex; gap: 8px; align-items: center; justify-content: center; margin-top: 16px; }
+  .pagination button { padding: 6px 14px; border: 1px solid var(--border); background: #fff; border-radius: 6px; cursor: pointer; font-size: 13px; }
+  .pagination button:disabled { opacity: 0.4; cursor: not-allowed; }
+  .pagination .page-info { font-size: 13px; color: var(--text-secondary); }
+
+  /* Error/loading */
+  .error-msg { background: #fef2f2; border: 1px solid #fecaca; color: #dc2626; padding: 12px 16px; border-radius: var(--radius); margin-top: 10px; font-size: 13px; }
+  .ai-loading { display: flex; align-items: center; gap: 8px; color: #7c3aed; font-size: 13px; padding: 10px 0; }
+  .spinner { width: 16px; height: 16px; border: 2px solid #ddd; border-top-color: #7c3aed; border-radius: 50%; animation: spin 0.7s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Loading overlay */
+  .loading-row td { opacity: 0.5; }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <header>
+    <h1>💳 信用卡账单查询系统</h1>
+    <span class="badge">PostgreSQL</span>
+  </header>
+
+  <!-- Stats -->
+  <div class="stats" id="stats"></div>
+
+  <!-- 条件筛选 -->
+  <div class="panel">
+    <div class="panel-title">🔍 条件筛选</div>
+    <div class="search-grid">
+      <div class="form-group">
+        <label>持卡人</label>
+        <select id="f-cardholder">
+          <option value="">全部</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>银行</label>
+        <select id="f-bank">
+          <option value="">全部</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>交易类型</label>
+        <select id="f-type">
+          <option value="">全部</option>
+          <option value="EXPENSE">支出（所有消费）</option>
+          <option value="INCOME">收入（所有还款）</option>
+          <option value="SPEND">消费</option>
+          <option value="REPAY">还款</option>
+          <option value="REFUND">退款</option>
+          <option value="DEPOSIT">存入</option>
+          <option value="INSTALLMENT_PRIN">分期本金</option>
+          <option value="INSTALLMENT_INT">分期利息</option>
+          <option value="FEE">手续费/年费</option>
+          <option value="CASH_ADVANCE">取现</option>
+          <option value="OTHER">其他</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>最小金额（元）</label>
+        <input type="number" id="f-min-amt" placeholder="如 0">
+      </div>
+      <div class="form-group">
+        <label>最大金额（元）</label>
+        <input type="number" id="f-max-amt" placeholder="如 5000">
+      </div>
+      <div class="form-group">
+        <label>开始日期</label>
+        <input type="date" id="f-start">
+      </div>
+      <div class="form-group">
+        <label>结束日期</label>
+        <input type="date" id="f-end">
+      </div>
+      <div class="form-group">
+        <label>账期</label>
+        <input type="month" id="f-cycle" placeholder="2026-04">
+      </div>
+    </div>
+    <div class="form-row" style="margin-top:14px;">
+      <button class="btn btn-primary" onclick="doSearch(0)">🔍 查询</button>
+      <button class="btn btn-secondary" onclick="resetFilters()">重置</button>
+    </div>
+  </div>
+
+  <!-- AI 查询 -->
+  <div class="panel">
+    <div class="panel-title">🤖 AI 智能查询</div>
+    <div style="font-size:12px; color:#6b7280; margin-bottom:10px;">
+      用自然语言描述你的查询，如："12月餐饮消费超过500元的记录"、"吴华辉平安银行所有还款记录"、"光大银行存入类交易"
+    </div>
+    <div class="ai-area">
+      <input type="text" id="ai-input" placeholder="输入自然语言查询，如：12月餐饮消费超过500元的记录"
+             onkeydown="if(event.key==='Enter')doAiSearch()">
+      <button class="btn btn-ai" onclick="doAiSearch()">🚀 AI查询</button>
+    </div>
+    <div id="ai-msg"></div>
+  </div>
+
+  <!-- 结果 -->
+  <div class="panel">
+    <div class="results-header">
+      <div class="panel-title" style="margin:0">📋 查询结果 <span id="result-count"></span> <span id="result-totals" style="font-size:13px;font-weight:400;color:#555;"></span></div>
+      <button class="btn btn-secondary" onclick="exportExcel()" style="font-size:12px;padding:5px 12px;">📥 导出Excel</button>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>银行</th>
+            <th>持卡人</th>
+            <th>卡号</th>
+            <th>交易日</th>
+            <th>记账日</th>
+            <th>描述</th>
+            <th>类别</th>
+            <th>类型</th>
+            <th>金额（元）</th>
+          </tr>
+        </thead>
+        <tbody id="result-body"></tbody>
+      </table>
+    </div>
+    <div class="pagination" id="pagination"></div>
+  </div>
+
+</div>
+
+<script>
+const PAGE_SIZE = 50;
+let currentOffset = 0;
+let currentTotal = 0;
+let isAiMode = false;
+
+const BANK_NAMES = {
+  ABC: '农行', BOCOM: '交行', CCB: '建行', CGB: '广发',
+  CITIC: '中信', CMB: '招行', ICBC: '工行', PAB: '平安',
+  CEB: '光大', CMBC: '民生', CZB: '浙商', BOC: '中行'
+};
+
+const TYPE_NAMES = {
+  SPEND: '消费', REPAY: '还款', REFUND: '退款', DEPOSIT: '存入',
+  INSTALLMENT_PRIN: '分期本金', INSTALLMENT_INT: '分期利息',
+  FEE: '手续费', CASH_ADVANCE: '取现', ADJUST: '调整', OTHER: '其他'
+};
+
+const TYPE_TAGS = {
+  SPEND: 'S', REPAY: 'R', REFUND: 'R', DEPOSIT: 'R',
+  INSTALLMENT_PRIN: 'I', INSTALLMENT_INT: 'I',
+  FEE: 'F', CASH_ADVANCE: 'S', ADJUST: 'O', OTHER: 'O'
+};
+
+async function api(url) {
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(r.status + ' ' + r.statusText);
+  return r.json();
+}
+
+async function loadMeta() {
+  try {
+    const [cardholders, banks] = await Promise.all([
+      api('/api/cardholders'),
+      api('/api/banks'),
+    ]);
+
+    const opts = v => [{v:'',t:'全部'}, ...v.map(x=>({v:x,t:x}))];
+    fillSelect('f-cardholder', opts(cardholders));
+
+    const bankOpts = [{v:'',t:'全部'}];
+    for (const b of banks) {
+      const name = BANK_NAMES[b.bank_code] || b.bank_code;
+      bankOpts.push({v: b.bank_code, t: `${name} (${b.cardholder}) [${b.count}条]`});
+    }
+    fillSelect('f-bank', bankOpts);
+
+    // Stats
+    const stats = await api('/api/search?limit=1&offset=0');
+    const total = stats.total;
+
+    let spendSum = 0, repaySum = 0;
+    const ss = await api('/api/search?limit=1000&offset=0');
+    for (const t of ss.transactions) {
+      if (t.amount > 0) spendSum += t.amount;
+      else repaySum += Math.abs(t.amount);
+    }
+
+    document.getElementById('stats').innerHTML = `
+      <div class="stat-card"><div class="label">总记录数</div><div class="value">${total.toLocaleString()}</div></div>
+      <div class="stat-card"><div class="label">累计消费</div><div class="value">¥${spendSum.toLocaleString('zh-CN',{minimumFractionDigits:2})}</div></div>
+      <div class="stat-card"><div class="label">累计还款/存入</div><div class="value neg">¥${repaySum.toLocaleString('zh-CN',{minimumFractionDigits:2})}</div></div>
+      <div class="stat-card"><div class="label">银行数量</div><div class="value">${banks.length}</div></div>
+    `;
+
+    // 默认查询
+    doSearch(0);
+  } catch(e) { console.error(e); }
+}
+
+function fillSelect(id, opts) {
+  const el = document.getElementById(id);
+  el.innerHTML = opts.map(o => `<option value="${o.v}">${o.t}`).join('');
+}
+
+function resetFilters() {
+  document.querySelectorAll('#f-cardholder,#f-bank,#f-type').forEach(e => e.value = '');
+  document.querySelectorAll('#f-min-amt,#f-max-amt,#f-start,#f-end,#f-cycle').forEach(e => e.value = '');
+  isAiMode = false;
+  doSearch(0);
+}
+
+function getParams(offset = 0) {
+  const p = new URLSearchParams();
+  const f = id => document.getElementById(id).value;
+  if (f('f-cardholder')) p.set('cardholder', f('f-cardholder'));
+  if (f('f-bank')) p.set('bank_code', f('f-bank'));
+  if (f('f-type')) p.set('trans_type', f('f-type'));
+  const minAmt = f('f-min-amt'); if (minAmt) p.set('min_amount', minAmt);
+  const maxAmt = f('f-max-amt'); if (maxAmt) p.set('max_amount', maxAmt);
+  const start = f('f-start'); if (start) p.set('start_date', start);
+  const end = f('f-end'); if (end) p.set('end_date', end);
+  const cycle = f('f-cycle'); if (cycle) p.set('bill_cycle', cycle);
+  p.set('limit', PAGE_SIZE);
+  p.set('offset', offset);
+  return p;
+}
+
+async function doSearch(offset = 0) {
+  currentOffset = offset;
+  isAiMode = false;
+  const params = getParams(offset);
+  document.getElementById('ai-msg').innerHTML = '';
+  try {
+    const data = await api('/api/search?' + params.toString());
+    currentTotal = data.total;
+    renderTable(data.transactions, data.sum_spend, data.sum_repay);
+    renderPager();
+  } catch(e) {
+    document.getElementById('result-body').innerHTML = `<tr><td colspan="9" style="color:red;text-align:center;padding:20px;">加载失败: ${e.message}</td></tr>`;
+  }
+}
+
+async function doAiSearch() {
+  const q = document.getElementById('ai-input').value.trim();
+  if (!q) return;
+  isAiMode = true;
+  currentOffset = 0;
+
+  const msgEl = document.getElementById('ai-msg');
+  msgEl.innerHTML = '<div class="ai-loading"><div class="spinner"></div>AI 正在分析查询并执行...</div>';
+
+  try {
+    const data = await api('/api/ai-search?q=' + encodeURIComponent(q) + '&limit=' + PAGE_SIZE + '&offset=0');
+    if (data.error) {
+      msgEl.innerHTML = `<div class="error-msg">${data.error}</div>`;
+      return;
+    }
+    currentTotal = data.total;
+    msgEl.innerHTML = `<div style="font-size:12px;color:#7c3aed;margin-bottom:8px;">🤖 AI查询: "${q}" → 找到 ${data.total} 条结果</div>`;
+    renderTable(data.transactions, data.sum_spend, data.sum_repay);
+    renderPager();
+  } catch(e) {
+    msgEl.innerHTML = `<div class="error-msg">请求失败: ${e.message}</div>`;
+  }
+}
+
+function renderTable(rows, sumSpend, sumRepay) {
+  const bankTag = code => `<span class="bank-tag" style="color:${bankColor(code)}">${BANK_NAMES[code]||code}</span>`;
+  const typeTag = t => {
+    const map = {'S':'消费','R':'还款','F':'手续费','I':'分期','O':'其他'};
+    const cls = {'S':'tag-S','R':'tag-R','F':'tag-F','I':'tag-I','O':'tag-O'};
+    const label = TYPE_NAMES[t] || t;
+    const c = TYPE_TAGS[t] || 'O';
+    return `<span class="tag tag-${c}">${label}</span>`;
+  };
+
+  if (!rows.length) {
+    document.getElementById('result-body').innerHTML = '<tr><td colspan="9" style="text-align:center;color:#9ca3af;padding:30px;">暂无数据</td></tr>';
+    document.getElementById('result-count').textContent = '';
+    return;
+  }
+
+  document.getElementById('result-body').innerHTML = rows.map(r => {
+    const amtCls = r.amount >= 0 ? 'pos' : 'neg';
+    const amtStr = (r.amount >= 0 ? '+' : '') + r.amount.toLocaleString('zh-CN', {minimumFractionDigits: 2});
+    return `<tr>
+      <td>${bankTag(r.bank_code)}</td>
+      <td>${esc(r.cardholder||'')}</td>
+      <td>****${esc(r.card_last4||'')}</td>
+      <td><div>${r.trans_date}</div></td>
+      <td><div>${r.post_date}</div></td>
+      <td class="desc-text" title="${esc(r.description)}">${esc(r.description)}</td>
+      <td>${esc(r.category||'')}</td>
+      <td>${typeTag(r.trans_type)}</td>
+      <td class="amount ${amtCls}">${amtStr}</td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('result-count').textContent = `— 共 ${currentTotal.toLocaleString()} 条`;
+  // 更新总计
+  const totalsEl = document.getElementById('result-totals');
+  if (sumSpend !== undefined && sumSpend !== null) {
+    totalsEl.innerHTML = `<span class="amount pos" style="font-weight:700;">支出 ¥${sumSpend.toLocaleString('zh-CN',{minimumFractionDigits:2})}</span> │ <span class="amount neg">还款 ¥${sumRepay.toLocaleString('zh-CN',{minimumFractionDigits:2})}</span>`;
+  } else {
+    totalsEl.textContent = '';
+  }
+}
+
+function exportExcel() {
+  const params = getParams(0);
+  // 最多导出5000条
+  params.set('limit', '5000');
+  params.set('offset', '0');
+  window.open('/api/export?' + params.toString(), '_blank');
+}
+
+function renderPager() {
+  const total = currentTotal;
+  const cur = currentOffset;
+  const size = PAGE_SIZE;
+  const totalPages = Math.ceil(total / size);
+  const curPage = Math.floor(cur / size) + 1;
+
+  if (total === 0) { document.getElementById('pagination').innerHTML = ''; return; }
+
+  let html = `<button ${cur === 0 ? 'disabled' : ''} onclick="doSearch(0)">« 首页</button>
+               <button ${cur === 0 ? 'disabled' : ''} onclick="doSearch(${cur - size})">‹ 上一页</button>
+               <span class="page-info">第 ${curPage} / ${totalPages} 页，共 ${total.toLocaleString()} 条</span>
+               <button ${cur + size >= total ? 'disabled' : ''} onclick="doSearch(${cur + size})">下一页 ›</button>
+               <button ${cur + size >= total ? 'disabled' : ''} onclick="doSearch(${(totalPages-1)*size})">末页 »</button>`;
+
+  document.getElementById('pagination').innerHTML = html;
+}
+
+function bankColor(code) {
+  const colors = {
+    ABC:'#1a7f37', BOCOM:'#0066cc', CCB:'#003087', CGB:'#c8102e',
+    CITIC:'#e5333a', CMB:'#c00000', ICBC:'#cf2027', PAB:'#f5a623',
+    CEB:'#ff6600', CMBC:'#0071bb', CZB:'#003087', BOC:'#c00000'
+  };
+  return colors[code] || '#666';
+}
+
+function esc(s) {
+  return String(s==null?'':s)
+    .replace(/&/g,'&amp;')
+    .replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;');
+}
+
+loadMeta();
+</script>
+</body>
+</html>

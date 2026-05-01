@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Node
+node_modules/
+
+# Environment
+.env
+
+# Sensitive financial data
+*.eml
+*_raw.html
+*_decoded.html
+*_debug_*
+*_email_*.html
+*zheshang_qp.txt
+$null
+
+# Output
+boc_output/
+*.xlsx
+*.csv
+
+# Git
+qq-email-bill.git/
