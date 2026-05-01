@@ -63,17 +63,17 @@ const decoders = {
 
   /** 从raw中提取QP编码的HTML并解码 */
   _decodeQP(raw, charset = "utf-8") {
-    const m = raw.match(/Content-Type: text\/html;[\s\S]*?charset[=][\s\S]*?\r?\n\r?\n([\s\S]*?)(?=\r?\n--(?:\r?\n|$)|\r?\n$)/i);
+    const m = raw.match(/Content-Type:\s*text\/html[^]*?\r?\n\r?\n([\s\S]*?)(?=\r?\n--(?:\r?\n|$)|\r?\n$)/i);
     if (!m) return null;
     const buf = this._qpToBuffer(m[1]);
     return iconv.decode(buf, charset);
   },
 
   decodeEmail(raw) {
-    // 检测 charset
-    const csMatch = raw.match(/charset\s*=\s*["']?([^"'\s;]+)/i);
-    const charset = csMatch ? csMatch[1].toLowerCase().replace(/[^a-z0-9-]/g, "") : "utf-8";
-    const isGBK = charset.includes("gb") || charset.includes("gbk") || charset.includes("gb2312") || charset.includes("gb18030");
+    // 检测 charset (可能紧跟在分号后如: text/html;charset=GBK)
+    const csMatch = raw.match(/charset\s*=\s*["\']?([a-z0-9_-]+)/i);
+    const charset = csMatch ? csMatch[1].toLowerCase() : "utf-8";
+    const isGBK = charset.includes("gb") || charset.includes("gb2312") || charset.includes("gb18030");
 
     // QP + 指定字符集
     if (raw.includes("quoted-printable")) {
