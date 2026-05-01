@@ -16,6 +16,7 @@ const { ImapFlow } = require("imapflow");
 const { Client } = require("pg");
 const fs = require("fs");
 const path = require("path");
+const iconv = require("iconv-lite");
 
 // ============ 全局配置 ============
 
@@ -53,25 +54,44 @@ const decoders = {
   },
 
   /** 自动检测并解码 email 中的 HTML */
+  /** QP解码（原始字节） */
+  _qpToBuffer(qp) {
+    const cleaned = qp.replace(/=\r?\n/g, "");
+    const latin1 = cleaned.replace(/=([0-9A-Fa-f]{2})/g, (_, h) => String.fromCharCode(parseInt(h, 16)));
+    return Buffer.from(latin1, "binary");
+  },
+
+  /** 从raw中提取QP编码的HTML并解码 */
+  _decodeQP(raw, charset = "utf-8") {
+    const m = raw.match(/Content-Type: text\/html;[\s\S]*?charset[=][\s\S]*?\r?\n\r?\n([\s\S]*?)(?=\r?\n--(?:\r?\n|$)|\r?\n$)/i);
+    if (!m) return null;
+    const buf = this._qpToBuffer(m[1]);
+    return iconv.decode(buf, charset);
+  },
+
   decodeEmail(raw) {
-    // 尝试 QP
+    // 检测 charset
+    const csMatch = raw.match(/charset\s*=\s*["']?([^"'\s;]+)/i);
+    const charset = csMatch ? csMatch[1].toLowerCase().replace(/[^a-z0-9-]/g, "") : "utf-8";
+    const isGBK = charset.includes("gb") || charset.includes("gbk") || charset.includes("gb2312") || charset.includes("gb18030");
+
+    // QP + 指定字符集
     if (raw.includes("quoted-printable")) {
-      const htmlMatch = raw.match(
-        /Content-Type: text\/html;[\s\S]*?charset[\s\S]*?\r?\n\r?\n([\s\S]*?)(?=\r?\n--(?:\r?\n|$)|\r?\n$)/i
-      );
-      if (htmlMatch) return this.qp(htmlMatch[1]);
+      const result = this._decodeQP(raw, isGBK ? "gbk" : "utf-8");
+      if (result) return result;
     }
-    // 尝试 Base64
-    if (raw.includes("Content-Transfer-Encoding: base64")) {
-      const htmlMatch = raw.match(/Content-Type: text\/html[\s\S]*?\r?\n\r?\n([\s\S]*?)(?=\r?\n--|\r?\n$)/i);
-      if (htmlMatch) {
-        const b64 = htmlMatch[1].replace(/[^A-Za-z0-9+/=]/g, "");
-        try {
-          return Buffer.from(b64, "base64").toString();
-        } catch (e) {}
+
+    // 普通UTF-8
+    if (isGBK) {
+      // GBK+base64
+      const m = raw.match(/Content-Type: text\/html[\s\S]*?\r?\n\r?\n([\s\S]*?)(?=\r?\n--|\r?\n$)/i);
+      if (m) {
+        const b64 = m[1].replace(/[^A-Za-z0-9+/=]/g, "");
+        try { return Buffer.from(b64, "base64").toString(); } catch (e) {}
       }
     }
-    // 尝试直接找HTML
+
+    // 直接HTML标签
     const htmlMatch = raw.match(/<html[\s\S]*?<\/html>/i);
     if (htmlMatch) return htmlMatch[0];
 
@@ -214,6 +234,16 @@ async function importBank(bank) {
       }
     } catch (e) { /* ignore */ }
   }
+
+  // 如果搜索没结果但文件夹有邮件，按序号取全部（跳过最后N封非账单）
+  if (msgs.length === 0 && imap.mailbox.exists > 0) {
+    const total = imap.mailbox.exists;
+    const skip = bank.skipLast || 0;
+    const start = Math.max(1, total - (bank.maxEmails || total) - skip + 1);
+    for (let i = start; i <= total - skip; i++) msgs.push(i);
+    console.log(`  (搜索无结果，按序号取 ${msgs.length} 封)`);
+  }
+
   msgs.sort((a, b) => Number(a) - Number(b));
   console.log(`🔍 找到 ${msgs.length} 封\n`);
 
