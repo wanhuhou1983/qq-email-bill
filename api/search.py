@@ -70,7 +70,7 @@ def validate_ai_sql(raw: str) -> str:
 def search(
     page: int = Query(0, ge=0),
     size: int = Query(20, ge=0, le=200),
-    bank_code: Optional[str] = Query(None, alias="bank"),
+    bank_code: Optional[str] = Query(None, alias="bank_code"),
     cardholder: Optional[str] = Query(None),
     min_amount: Optional[float] = Query(None),
     max_amount: Optional[float] = Query(None),
@@ -147,7 +147,7 @@ def ai_search(
 - trans_type: SPEND/REPAY/REFUND/DEPOSIT/INSTALLMENT_PRIN/INSTALLMENT_INT/FEE/CASH_ADVANCE/ADJUST/OTHER
 - 自然语言"消费"→ amount > 0，"还款"→ amount < 0
 - 表名必须是 credit_card_transactions，不要用简称或缩写
-- 只能用 SELECT * 查询明细记录，不允许 SUM/COUNT/AVG 等聚合函数
+- 只能用 SELECT * 查询明细记录，不允许 SELECT 指定字段，不允许聚合函数
 - 排序用 ORDER BY trans_date DESC
 - LIMIT 最大 500 条
 
