@@ -73,8 +73,8 @@ const bank = {
   _extractBillInfo(html, envelope, transactions) {
     const text = html.replace(/<[^>]+>/g, " ").replace(/&nbsp;/g, " ").replace(/\s+/g, " ");
 
-    // 自动识别持卡人: "尊敬的钱伟琴 女士" 或 "尊敬的赵健伟 先生"
-    const nameMatch = text.match(/尊敬的([\u4e00-\u9fff]{2,4})(?:先生|女士)/);
+    // 自动识别持卡人: "尊敬的钱伟琴 女士" 或 "尊敬的赵健伟先生"（可能有空格）
+    const nameMatch = text.match(/尊敬的([\u4e00-\u9fff]{2,4})\s*(?:先生|女士)/);
     const cardholder = nameMatch ? nameMatch[1] : this.defaultCardholder;
 
     // 账单周期: 2026年03月22日 至 2026年04月21日

@@ -365,10 +365,14 @@ async function importBank(bank) {
       );
     }
 
-    // 入库
-    const billId = await PG.upsertBill(
-      bank, result.billInfo || {}, `email-${bank.code}-${uid}`
-    );
+    // 入库：把 billInfo 的持卡人传播到没有cardholder的交易
+    const bill = result.billInfo || {};
+    const billCardholder = bill.cardholder || bank.defaultCardholder;
+    for (const t of result.transactions) {
+      if (!t.cardholder) t.cardholder = billCardholder;
+    }
+
+    const billId = await PG.upsertBill(bank, bill, `email-${bank.code}-${uid}`);
     console.log(`  账单ID: ${billId}`);
 
     const inserted = await PG.insertTransactions(billId, bank, result.transactions);
