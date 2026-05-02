@@ -69,7 +69,7 @@ def validate_ai_sql(raw: str) -> str:
 @router.get("/search", response_model=SearchResult)
 def search(
     page: int = Query(0, ge=0),
-    size: int = Query(20, ge=1, le=200),
+    size: int = Query(20, ge=0, le=200),
     bank_code: Optional[str] = Query(None, alias="bank"),
     cardholder: Optional[str] = Query(None),
     min_amount: Optional[float] = Query(None),
@@ -86,7 +86,6 @@ def search(
 ):
     params = {k: v for k, v in locals().items() if k not in ("self", "page", "size") and v is not None}
     where_sql, values = build_where_clause(params)
-    offset = page * size
 
     conn = get_conn(); cur = conn.cursor()
     try:
@@ -99,6 +98,11 @@ def search(
         cur.execute(f"SELECT COUNT(*) FROM credit_card_transactions t WHERE 1=1 {where_sql}", values)
         total = cur.fetchone()[0]
 
+        # size=0 时只返回聚合值，不查询交易明细
+        if size == 0:
+            return SearchResult(total=total, sum_spend=sum_spend, sum_repay=sum_repay, transactions=[])
+
+        offset = page * size
         cur.execute(f"""
             SELECT t.id, t.bank_code, COALESCE(b.bank_name, '') as bank_name,
                    t.cardholder, t.card_last4, COALESCE(t.card_type, '') as card_type,

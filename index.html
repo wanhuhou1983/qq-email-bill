@@ -310,22 +310,21 @@ async function loadMeta() {
     }
     fillSelect('f-bank', bankOpts);
 
-    // Stats
-    const stats = await api('/api/search?limit=1&offset=0');
+    // Stats - 直接取后台聚合值
+    const stats = await api('/api/search?size=0');
     const total = stats.total;
+    const spendSum = stats.sum_spend || 0;
+    const repaySum = stats.sum_repay || 0;
 
-    let spendSum = 0, repaySum = 0;
-    const ss = await api('/api/search?limit=1000&offset=0');
-    for (const t of ss.transactions) {
-      if (t.amount > 0) spendSum += t.amount;
-      else repaySum += Math.abs(t.amount);
-    }
+    // 信用卡数量(不同卡号)
+    const cards = await api('/api/cards');
+    const cardCount = cards.length;
 
     document.getElementById('stats').innerHTML = `
       <div class="stat-card"><div class="label">总记录数</div><div class="value">${total.toLocaleString()}</div></div>
       <div class="stat-card"><div class="label">累计消费</div><div class="value">¥${spendSum.toLocaleString('zh-CN',{minimumFractionDigits:2})}</div></div>
       <div class="stat-card"><div class="label">累计还款/存入</div><div class="value neg">¥${repaySum.toLocaleString('zh-CN',{minimumFractionDigits:2})}</div></div>
-      <div class="stat-card"><div class="label">银行数量</div><div class="value">${banks.length}</div></div>
+      <div class="stat-card"><div class="label">信用卡数量</div><div class="value">${cardCount}</div></div>
     `;
 
     // 默认查询
