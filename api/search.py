@@ -5,7 +5,7 @@ import os, re
 from datetime import date
 from typing import Optional
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, HTTPException, Query
 from openai import OpenAI
 
 from db import get_conn, get_reader_conn
@@ -14,10 +14,41 @@ from api.utils import row_to_dict, build_where_clause
 
 router = APIRouter(tags=["search"])
 
-client = OpenAI(
-    api_key=os.getenv("DEEPSEEK_API_KEY", "sk-jtiawbivdncqlenhubffbktndozwmgqrwgvxcyfuiqspghjr"),
-    base_url=os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com"),
-)
+
+def get_ai_client() -> OpenAI:
+    api_key = os.getenv("DEEPSEEK_API_KEY")
+    if not api_key:
+        raise HTTPException(status_code=500, detail="未配置 DEEPSEEK_API_KEY（请在 .env 中设置）")
+    return OpenAI(
+        api_key=api_key,
+        base_url=os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com"),
+    )
+
+
+def validate_ai_sql(raw: str) -> str:
+    sql = raw.strip()
+    sql = re.sub(r"^```sql\s*", "", sql, flags=re.IGNORECASE)
+    sql = re.sub(r"^```\s*", "", sql).strip().rstrip(";")
+
+    upper = sql.upper()
+
+    banned_keywords = ["DROP", "DELETE", "INSERT", "UPDATE", "TRUNCATE",
+                       "ALTER", "CREATE", "GRANT", "REVOKE", "COPY"]
+    banned_tokens = [";", "--", "/*", "*/", "PG_", "INFORMATION_SCHEMA", "PG_CATALOG"]
+
+    if not upper.startswith("SELECT"):
+        raise HTTPException(status_code=400, detail="AI 仅允许生成 SELECT 查询")
+    if any(kw in upper for kw in banned_keywords):
+        raise HTTPException(status_code=400, detail="AI SQL 包含危险关键字")
+    if any(t in upper for t in banned_tokens):
+        raise HTTPException(status_code=400, detail="AI SQL 包含不允许的结构")
+    if "CREDIT_CARD_TRANSACTIONS" not in upper:
+        raise HTTPException(status_code=400, detail="AI SQL 必须查询 credit_card_transactions")
+    if "JOIN " in upper or "WITH " in upper:
+        raise HTTPException(status_code=400, detail="AI SQL 暂不允许 JOIN 或 CTE")
+
+    return sql
+
 
 @router.get("/search", response_model=SearchResult)
 def search(
@@ -39,6 +70,7 @@ def search(
 ):
     params = {k: v for k, v in locals().items() if k not in ("self", "page", "size") and v is not None}
     where_sql, values = build_where_clause(params)
+    offset = page * size
 
     conn = get_conn(); cur = conn.cursor()
     try:
@@ -61,12 +93,13 @@ def search(
             LEFT JOIN credit_card_bills b ON t.bill_id = b.id
             WHERE 1=1 {where_sql}
             ORDER BY t.trans_date DESC, t.id DESC LIMIT %s OFFSET %s
-        """, values + [size, page])
+        """, values + [size, offset])
         cols = [desc[0] for desc in cur.description]
         return SearchResult(total=total, sum_spend=sum_spend, sum_repay=sum_repay,
                             transactions=[row_to_dict(r, cols) for r in cur.fetchall()])
     finally:
         cur.close(); conn.close()
+
 
 @router.get("/ai-search", response_model=SearchResult)
 def ai_search(
@@ -74,6 +107,8 @@ def ai_search(
     page: int = Query(0, ge=0),
     size: int = Query(20, ge=1, le=200),
 ):
+    offset = page * size
+
     conn = get_reader_conn(); cur = conn.cursor()
     try:
         cur.execute("SELECT column_name, data_type FROM information_schema.columns WHERE table_name = 'credit_card_transactions' ORDER BY ordinal_position")
@@ -91,20 +126,19 @@ def ai_search(
 - amount > 0 消费/支出, amount < 0 还款/存入/退款
 - trans_type: SPEND/REPAY/REFUND/DEPOSIT/INSTALLMENT_PRIN/INSTALLMENT_INT/FEE/CASH_ADVANCE/ADJUST/OTHER
 - 自然语言"消费"→ amount > 0，"还款"→ amount < 0
+- 只能查询 credit_card_transactions 单表，不允许 JOIN、WITH、多语句、注释
+- LIMIT 最大 500 条
 
-只输出 SQL，不要其他内容。LIMIT 最大 500 条。只允许查询 credit_card_transactions 表。"""
+只输出 SQL，不要其他内容。"""
 
+    client = get_ai_client()
     response = client.chat.completions.create(
         model="deepseek-chat",
         messages=[{"role": "system", "content": prompt}, {"role": "user", "content": q}],
         temperature=0,
     )
-    sql = response.choices[0].message.content.strip()
-    sql = re.sub(r"^```sql\s*", "", sql, flags=re.IGNORECASE)
-    sql = re.sub(r"^```\s*", "", sql).strip().rstrip(";")
 
-    if not sql.upper().startswith("SELECT") or any(kw in sql.upper() for kw in ["DROP", "DELETE", "INSERT", "UPDATE", "TRUNCATE", "ALTER", "CREATE"]):
-        return {"error": f"不允许的 SQL: {sql[:100]}"}
+    sql = validate_ai_sql(response.choices[0].message.content)
 
     conn = get_reader_conn(); cur = conn.cursor()
     try:
@@ -117,11 +151,13 @@ def ai_search(
         cur.execute(f"SELECT COUNT(*) FROM ({sql}) AS sub")
         total = cur.fetchone()[0]
 
-        cur.execute(sql + f" LIMIT {size} OFFSET {page}")
+        cur.execute(f"SELECT * FROM ({sql}) AS sub LIMIT %s OFFSET %s", [size, offset])
         cols = [desc[0] for desc in cur.description]
         return SearchResult(total=total, sum_spend=sum_spend, sum_repay=sum_repay,
                             transactions=[row_to_dict(r, cols) for r in cur.fetchall()])
+    except HTTPException:
+        raise
     except Exception as e:
-        return {"error": f"SQL 执行失败: {str(e)}\nSQL: {sql}"}
+        raise HTTPException(status_code=400, detail=f"SQL 执行失败: {str(e)}")
     finally:
         cur.close(); conn.close()
