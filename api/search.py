@@ -27,14 +27,27 @@ def get_ai_client() -> OpenAI:
 
 def validate_ai_sql(raw: str) -> str:
     sql = raw.strip()
-    sql = re.sub(r"^```sql\s*", "", sql, flags=re.IGNORECASE)
-    sql = re.sub(r"^```\s*", "", sql).strip().rstrip(";")
+
+    # 提取 ```sql ... ``` 块（模型可能输出中文解释+SQL）
+    blocks = re.findall(r"```(?:sql)?\s*([\s\S]*?)```", sql, flags=re.IGNORECASE)
+    if blocks:
+        sql = max(blocks, key=len).strip()
+    else:
+        # 无代码块：取第一个 SELECT 语句
+        m = re.search(r"SELECT\s.*", sql, flags=re.IGNORECASE | re.DOTALL)
+        if m:
+            sql = m.group(0).strip().rstrip(";")
 
     upper = sql.upper()
 
+    # 安全检查
     banned_keywords = ["DROP", "DELETE", "INSERT", "UPDATE", "TRUNCATE",
                        "ALTER", "CREATE", "GRANT", "REVOKE", "COPY"]
-    banned_tokens = [";", "--", "/*", "*/", "PG_", "INFORMATION_SCHEMA", "PG_CATALOG"]
+    # 仅禁止多语句分号；语句末尾的分号允许
+    multi_stmt_chk = sql.rstrip(";")
+    if ";" in multi_stmt_chk:
+        raise HTTPException(status_code=400, detail="AI SQL 包含多语句（不允许）")
+    banned_tokens = ["--", "/*", "*/", "PG_", "INFORMATION_SCHEMA", "PG_CATALOG"]
 
     if not upper.startswith("SELECT"):
         raise HTTPException(status_code=400, detail="AI 仅允许生成 SELECT 查询")
@@ -46,6 +59,9 @@ def validate_ai_sql(raw: str) -> str:
         raise HTTPException(status_code=400, detail="AI SQL 必须查询 credit_card_transactions")
     if "JOIN " in upper or "WITH " in upper:
         raise HTTPException(status_code=400, detail="AI SQL 暂不允许 JOIN 或 CTE")
+
+    # 去掉尾部分号（子查询包装时会报错）
+    sql = sql.rstrip(";").strip()
 
     return sql
 
@@ -101,7 +117,7 @@ def search(
         cur.close(); conn.close()
 
 
-@router.get("/ai-search", response_model=SearchResult)
+@router.get("/ai-search")
 def ai_search(
     q: str = Query(..., description="自然语言查询"),
     page: int = Query(0, ge=0),
@@ -118,7 +134,7 @@ def ai_search(
 
     prompt = f"""你是一个 PostgreSQL 查询生成器。根据用户的自然语言查询，生成 SQL 查询。
 
-表名: credit_card_transactions
+数据库表名: credit_card_transactions（简称 cct）
 列结构:
 {schema}
 
@@ -126,10 +142,11 @@ def ai_search(
 - amount > 0 消费/支出, amount < 0 还款/存入/退款
 - trans_type: SPEND/REPAY/REFUND/DEPOSIT/INSTALLMENT_PRIN/INSTALLMENT_INT/FEE/CASH_ADVANCE/ADJUST/OTHER
 - 自然语言"消费"→ amount > 0，"还款"→ amount < 0
-- 只能查询 credit_card_transactions 单表，不允许 JOIN、WITH、多语句、注释
+- 表名必须是 credit_card_transactions，不要用简称或缩写
+- 只能查询单表，不允许 JOIN、WITH、多语句、注释
 - LIMIT 最大 500 条
 
-只输出 SQL，不要其他内容。"""
+只输出 SQL 代码，不要任何解释。"""
 
     client = get_ai_client()
     response = client.chat.completions.create(
@@ -151,13 +168,23 @@ def ai_search(
         cur.execute(f"SELECT COUNT(*) FROM ({sql}) AS sub")
         total = cur.fetchone()[0]
 
-        cur.execute(f"SELECT * FROM ({sql}) AS sub LIMIT %s OFFSET %s", [size, offset])
+        cur.execute(f"SELECT * FROM ({sql}) AS sub LIMIT {size} OFFSET {offset}")
+        if cur.description is None:
+            raise HTTPException(status_code=400, detail="AI SQL 无法返回结果")
         cols = [desc[0] for desc in cur.description]
-        return SearchResult(total=total, sum_spend=sum_spend, sum_repay=sum_repay,
-                            transactions=[row_to_dict(r, cols) for r in cur.fetchall()])
+        rows = cur.fetchall()
+        return {
+            "total": total,
+            "sum_spend": sum_spend,
+            "sum_repay": sum_repay,
+            "transactions": [row_to_dict(r, cols) for r in rows],
+        }
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"SQL 执行失败: {str(e)}")
+        import traceback
+        err_detail = f"SQL 执行失败: {str(e)}\n{traceback.format_exc()}"
+        raise HTTPException(status_code=400, detail=err_detail)
     finally:
         cur.close(); conn.close()
+
