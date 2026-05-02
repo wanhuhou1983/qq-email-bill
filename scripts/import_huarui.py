@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-MD_PATH = r"C:\Users\linhu\MinerU\华瑞银行.pdf-4ab6b223-e445-4ec5-a7ca-bc9e7629d666\full.md"
+MD_PATH = r"C:\Users\linhu\MinerU\f55b5213-910f-44d9-908e-c9065f4f52c9_origin.pdf-5ef74ea7-31fe-4733-af65-08ea0e087072\full.md"
 BANK_CODE = "HRB"
 ACCOUNT_NUMBER = "6236222299130362647"
 ACCOUNT_NAME = "吴华辉"
