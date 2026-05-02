@@ -64,31 +64,77 @@ const decoders = {
   /** 从raw中提取QP编码的HTML并解码 */
   _decodeQP(raw, charset = "utf-8") {
     const m = raw.match(/Content-Type:\s*text\/html[^]*?\r?\n\r?\n([\s\S]*?)(?=\r?\n--(?:\r?\n|$)|\r?\n$)/i);
-    if (!m) return null;
-    const buf = this._qpToBuffer(m[1]);
-    return iconv.decode(buf, charset);
+    if (m) {
+      const buf = this._qpToBuffer(m[1]);
+      return iconv.decode(buf, charset);
+    }
+    // 无boundary时：Content-Type后取所有内容
+    const idx = raw.search(/Content-Type:\s*text\/html[^]*?\r?\n\r?\n/i);
+    if (idx >= 0) {
+      const body = raw.substring(idx);
+      const bodyMatch = body.match(/\r?\n\r?\n([\s\S]*)$/);
+      if (bodyMatch) {
+        const buf = this._qpToBuffer(bodyMatch[1]);
+        return iconv.decode(buf, charset);
+      }
+    }
+    return null;
   },
 
   decodeEmail(raw) {
-    // 检测 charset (可能紧跟在分号后如: text/html;charset=GBK)
+    // 检测 charset
     const csMatch = raw.match(/charset\s*=\s*["\']?([a-z0-9_-]+)/i);
     const charset = csMatch ? csMatch[1].toLowerCase() : "utf-8";
     const isGBK = charset.includes("gb") || charset.includes("gb2312") || charset.includes("gb18030");
 
-    // QP + 指定字符集
-    if (raw.includes("quoted-printable")) {
+    // 检测编码：找 text/html 附近的 Content-Transfer-Encoding
+    const htmlIdx = raw.search(/Content-Type:\s*text\/html/i);
+    const nearHtml = htmlIdx >= 0 ? raw.substring(htmlIdx, Math.min(raw.length, htmlIdx + 500)) : raw;
+    const cte = (nearHtml.match(/Content-Transfer-Encoding:\s*(\S+)/i) || [])[1]?.toLowerCase();
+    const isQP = cte === "quoted-printable";
+    const isB64 = cte === "base64";
+
+    // Base64 （优先于 QP 检测，因为 base64 内容也含 =）
+    if (isB64) {
+      const m = raw.match(/Content-Type:\s*text\/html[\s\S]*?\r?\n\r?\n([\s\S]*?)(?=\r?\n--(?:\r?\n|$)|\r?\n\w+:\s|\r?\n$)/i);
+      if (m) {
+        const b64 = m[1].replace(/[^A-Za-z0-9+/=]/g, "");
+        try {
+          const enc = isGBK ? "gbk" : charset;
+          return iconv.decode(Buffer.from(b64, "base64"), enc);
+        } catch (e) {}
+      }
+      // fallback: 从Content-Type后面直接取
+      const idx = raw.search(/Content-Type:\s*text\/html[^]*?\r?\n\r?\n/i);
+      if (idx >= 0) {
+        const body = raw.substring(idx).match(/\r?\n\r?\n([\s\S]*?)$/);
+        if (body) {
+          const b64 = body[1].replace(/[^A-Za-z0-9+/=]/g, "");
+          try { return iconv.decode(Buffer.from(b64, "base64"), isGBK ? "gbk" : charset); } catch (e) {}
+        }
+      }
+    }
+
+    // QP
+    if (isQP) {
       const result = this._decodeQP(raw, isGBK ? "gbk" : "utf-8");
       if (result) return result;
     }
 
-    // 普通UTF-8
-    if (isGBK) {
-      // GBK+base64
-      const m = raw.match(/Content-Type: text\/html[\s\S]*?\r?\n\r?\n([\s\S]*?)(?=\r?\n--|\r?\n$)/i);
-      if (m) {
-        const b64 = m[1].replace(/[^A-Za-z0-9+/=]/g, "");
-        try { return Buffer.from(b64, "base64").toString(); } catch (e) {}
+    // fallback: 直接取 text/html 后内容试试
+    const rawBody = nearHtml.match(/\r?\n\r?\n([\s\S]*?)$/);
+    if (rawBody) {
+      const cleaned = rawBody[1].replace(/=\r?\n/g, "");
+      if (/=[0-9A-Fa-f]{2}/.test(cleaned)) {
+        const latin1 = cleaned.replace(/=([0-9A-Fa-f]{2})/g, (_, h) => String.fromCharCode(parseInt(h, 16)));
+        return iconv.decode(Buffer.from(latin1, "binary"), isGBK ? "gbk" : charset);
       }
+    }
+
+    // fallback base64 (没有编码头但有 base64 特征)
+    const b64FallbackMatch = nearHtml.match(/\r?\n\r?\n([A-Za-z0-9+/=]{100,})/);
+    if (b64FallbackMatch) {
+      try { return iconv.decode(Buffer.from(b64FallbackMatch[1], "base64"), charset); } catch (e) {}
     }
 
     // 直接HTML标签
