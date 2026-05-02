@@ -147,7 +147,8 @@ def ai_search(
 - trans_type: SPEND/REPAY/REFUND/DEPOSIT/INSTALLMENT_PRIN/INSTALLMENT_INT/FEE/CASH_ADVANCE/ADJUST/OTHER
 - 自然语言"消费"→ amount > 0，"还款"→ amount < 0
 - 表名必须是 credit_card_transactions，不要用简称或缩写
-- 只能查询单表，不允许 JOIN、WITH、多语句、注释
+- 只能用 SELECT * 查询明细记录，不允许 SUM/COUNT/AVG 等聚合函数
+- 排序用 ORDER BY trans_date DESC
 - LIMIT 最大 500 条
 
 只输出 SQL 代码，不要任何解释。"""
