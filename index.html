@@ -118,6 +118,36 @@
   <!-- Stats -->
   <div class="stats" id="stats"></div>
 
+  <!-- 导入账单 -->
+  <div class="panel">
+    <div class="panel-title">📥 导入账单</div>
+    <div class="import-area">
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+        <input type="file" id="import-file" accept=".xls,.xlsx" style="font-size:14px;">
+        <select id="import-bank" style="padding:6px 10px;border:1px solid #ccc;border-radius:6px;font-size:14px;">
+          <option value="SPDB">浦发银行</option>
+          <option value="CCB">建设银行</option>
+          <option value="ICBC">工商银行</option>
+          <option value="ABC">农业银行</option>
+          <option value="BOC">中国银行</option>
+          <option value="BOCOM">交通银行</option>
+          <option value="CEB">光大银行</option>
+          <option value="CGB">广发银行</option>
+          <option value="CITIC">中信银行</option>
+          <option value="CMB">招商银行</option>
+          <option value="CMBC">民生银行</option>
+          <option value="CZB">浙商银行</option>
+          <option value="PAB">平安银行</option>
+        </select>
+        <button class="btn btn-primary" onclick="doImport()">📤 导入</button>
+        <span id="import-status" style="font-size:13px;color:#666;"></span>
+      </div>
+      <div style="font-size:12px;color:#999;margin-top:8px;">
+        支持浦发银行 XLS 格式：交易日期 | 记账日期 | 交易摘要 | 卡号末四位 | 卡片类型 | 币种 | 交易金额 | 原始金额
+      </div>
+    </div>
+  </div>
+
   <!-- 条件筛选 -->
   <div class="panel">
     <div class="panel-title">🔍 条件筛选</div>
@@ -513,6 +543,37 @@ function esc(s) {
     .replace(/</g,'&lt;')
     .replace(/>/g,'&gt;')
     .replace(/"/g,'&quot;');
+}
+
+async function doImport() {
+  const fileInput = document.getElementById('import-file');
+  const status = document.getElementById('import-status');
+  if (!fileInput.files || !fileInput.files[0]) {
+    status.textContent = '⚠️ 请先选择文件';
+    return;
+  }
+  const file = fileInput.files[0];
+  if (!file.name.endsWith('.xls')) {
+    status.textContent = '⚠️ 仅支持 .xls 文件';
+    return;
+  }
+
+  status.textContent = '⏳ 上传解析中...';
+  const formData = new FormData();
+  formData.append('file', file);
+
+  try {
+    const r = await fetch('/api/import-xls', { method:'POST', body:formData });
+    const data = await r.json();
+    if (data.error) {
+      status.textContent = '❌ ' + data.error;
+    } else {
+      status.textContent = `✅ 成功导入 ${data.inserted}/${data.total} 条 (${data.bill_cycle})`;
+      loadMeta();  // 刷新统计
+    }
+  } catch(e) {
+    status.textContent = '❌ 导入失败: ' + e.message;
+  }
 }
 
 loadMeta();

@@ -10,7 +10,7 @@ from typing import Optional
 import psycopg2
 import psycopg2.extras
 from dotenv import load_dotenv
-from fastapi import FastAPI, Query
+from fastapi import FastAPI, Query, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
@@ -516,6 +516,89 @@ def export_excel(
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": "attachment; filename=credit_card_export.xlsx"},
     )
+
+
+@app.post("/api/import-xls")
+async def import_xls(file: UploadFile = File(...)):
+    """上传浦发银行XLS账单文件并导入数据库"""
+    import tempfile, subprocess, json, shutil
+
+    if not file.filename.endswith(".xls"):
+        return {"error": "仅支持 .xls 文件", "inserted": 0}
+
+    # 保存上传文件
+    tmp = tempfile.NamedTemporaryFile(suffix=".xls", delete=False)
+    try:
+        content = await file.read()
+        tmp.write(content)
+        tmp.close()
+
+        # 直接解析XLS（不用subprocess，避免编码问题）
+        import pandas as pd
+        try:
+            df = pd.read_excel(tmp.name, header=None, engine="xlrd")
+        except Exception:
+            try:
+                df = pd.read_excel(tmp.name, header=None, engine="openpyxl")
+            except Exception as e2:
+                return {"error": f"解析失败: {e2}", "inserted": 0}
+
+        transactions = []
+        for i in range(1, len(df)):
+            row = df.iloc[i]
+            try:
+                td = str(int(row[0])); pd_ = str(int(row[1]))
+                desc = str(row[2])[:200]; card = str(int(row[3]))
+                amt = float(row[6])
+                if len(td) == 8 and len(pd_) == 8:
+                    transactions.append({
+                        "trans_date": td[:4]+"-"+td[4:6]+"-"+td[6:8],
+                        "post_date": pd_[:4]+"-"+pd_[4:6]+"-"+pd_[6:8],
+                        "description": desc,
+                        "amount": amt,
+                        "card_last4": card,
+                        "cardholder": "吴华辉",
+                    })
+            except: pass
+        if not transactions:
+            return {"error": "未找到交易数据", "inserted": 0}
+
+        # 入库
+        conn = get_conn()
+        cur = conn.cursor()
+        try:
+            bill_cycle = transactions[0]["trans_date"][:7]
+            bill_date = transactions[-1]["post_date"]
+
+            cur.execute("""
+                INSERT INTO credit_card_bills (bank_code,bank_name,cardholder,bill_date,bill_cycle,cycle_start,cycle_end,account_masked)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
+                ON CONFLICT (bank_code,bill_date,account_masked) DO UPDATE SET updated_at=NOW()
+                RETURNING id
+            """, ("SPDB","浦发银行","吴华辉",bill_date,bill_cycle,
+                  transactions[0]["trans_date"],transactions[-1]["trans_date"],
+                  "****"+transactions[0].get("card_last4","")))
+            bill_id = cur.fetchone()[0]
+
+            inserted = 0
+            for t in transactions:
+                try:
+                    cur.execute("""
+                        INSERT INTO credit_card_transactions (bill_id,bank_code,cardholder,card_last4,account_masked,trans_date,post_date,description,amount,currency,trans_type,source,raw_line_text)
+                        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'upload',%s)
+                        ON CONFLICT (bank_code,trans_date,post_date,card_last4,description,amount) DO NOTHING
+                    """, (bill_id,"SPDB",t["cardholder"],t["card_last4"],"****"+t["card_last4"],
+                          t["trans_date"],t["post_date"],t["description"],t["amount"],"CNY",
+                          "SPEND" if t["amount"] > 0 else "REPAY",
+                          f'{t["trans_date"]}|{t["amount"]}|{t["description"]}'))
+                    if cur.rowcount > 0: inserted += 1
+                except: pass
+            conn.commit()
+            return {"inserted": inserted, "total": len(transactions), "filename": file.filename, "bill_cycle": bill_cycle}
+        finally:
+            cur.close(); conn.close()
+    finally:
+        os.unlink(tmp.name)
 
 
 if __name__ == "__main__":
