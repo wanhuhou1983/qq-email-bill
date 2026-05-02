@@ -44,12 +44,23 @@ BANK_NAMES = {
 }
 
 def get_conn():
+    """读写连接（查询/导入用）"""
     return psycopg2.connect(
         host=os.getenv("DB_HOST", "localhost"),
         port=int(os.getenv("DB_PORT", 5432)),
         user=os.getenv("DB_USER", "postgres"),
         password=os.getenv("DB_PASSWORD"),
         database=os.getenv("DB_NAME", "postgres"),
+    )
+
+def get_reader_conn():
+    """只读连接（AI查询用），从权限层面防止SQL注入"""
+    return psycopg2.connect(
+        host=os.getenv("READER_HOST", "localhost"),
+        port=int(os.getenv("READER_PORT", 5432)),
+        user=os.getenv("READER_USER", "reader"),
+        password=os.getenv("READER_PASSWORD", ""),
+        database=os.getenv("READER_NAME", "postgres"),
     )
 
 
@@ -356,8 +367,8 @@ def ai_search(
 
     client = openai.OpenAI(api_key=api_key, base_url="https://api.deepseek.com")
 
-    # 先查表结构，让 AI 知道有哪些字段
-    conn = get_conn()
+    # 先查表结构，让 AI 知道有哪些字段（用只读连接）
+    conn = get_reader_conn()
     cur = conn.cursor()
     try:
         cur.execute("""
@@ -409,7 +420,7 @@ def ai_search(
     if not sql.upper().startswith("SELECT") or "DROP" in sql.upper() or "DELETE" in sql.upper() or "INSERT" in sql.upper() or "UPDATE" in sql.upper() or "TRUNCATE" in sql.upper():
         return {"error": f"生成的 SQL 包含不允许的语句: {sql[:100]}"}
 
-    conn = get_conn()
+    conn = get_reader_conn()
     cur = conn.cursor()
     try:
         # 聚合
