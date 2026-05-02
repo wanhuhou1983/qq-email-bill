@@ -28,6 +28,17 @@ boc_output/
 # Git
 qq-email-bill.git/
 
+# Runtime files
+fastapi.pid
+
+# Debug artifacts (should not be committed)
+*_debug_*
+*_raw.txt
+*_decoded.html
+*_sample.html
+*_from_loader.html
+*_raw.eml
+
 # Old scripts (Python gen scripts, debug files)
 *_gen.py
 import_zheshang.py
