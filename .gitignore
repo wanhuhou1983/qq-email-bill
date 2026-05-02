@@ -11,15 +11,6 @@ node_modules/
 # Environment
 .env
 
-# Sensitive financial data
-*.eml
-*_raw.html
-*_decoded.html
-*_debug_*
-*_email_*.html
-*zheshang_qp.txt
-$null
-
 # Output
 boc_output/
 *.xlsx
@@ -28,30 +19,8 @@ boc_output/
 # Git
 qq-email-bill.git/
 
-# Runtime files
+# Runtime
 fastapi.pid
 
-# Debug artifacts (should not be committed)
-*_debug_*
-*_raw.txt
-*_decoded.html
-*_sample.html
-*_from_loader.html
-*_raw.eml
-
-# Old scripts (Python gen scripts, debug files)
-*_gen.py
-import_zheshang.py
-*_debug_*
-_debug_*
-debug-*.cjs
-decode-*.cjs
-*boc_*
-*_raw.eml
-*_raw.html
-*_sample.eml
-*_latest.html
-*zheshang_*.html
-*zheshang_*.eml
-*zheshang_qp.txt
-*icbc_*
+# Samples (moved to samples/)
+samples/
