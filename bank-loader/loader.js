@@ -316,24 +316,37 @@ async function importBank(bank) {
       continue;
     }
 
-    const raw = msg.source.toString("utf-8");
+    const raw = msg.source.toString("binary");
     const subject = msg.envelope?.subject || "";
     console.log(`  主题: ${subject}`);
 
-    // 解码HTML
-    const decodedHtml = decoders.decodeEmail(raw);
-    if (!decodedHtml) {
-      console.log("  ⚠ 无法解码\n");
-      continue;
-    }
-
-    // 调用银行parser
+    // 特殊处理: PDF附件银行（如中行BOC）
     let result;
-    try {
-      result = bank.parse(decodedHtml, msg.envelope);
-    } catch (e) {
-      console.log(`  ⚠ 解析失败: ${e.message}\n`);
-      continue;
+    if (bank.parseFromRaw) {
+      try {
+        result = bank.parseFromRaw(raw);
+      } catch (e) {
+        console.log(`  ⚠ PDF解析失败: ${e.message}\n`);
+        continue;
+      }
+      if (!result || !result.transactions) {
+        console.log("  ⚠ 无交易或无PDF\n");
+        continue;
+      }
+    } else {
+      // 常规HTML解码
+      const decodedHtml = decoders.decodeEmail(raw);
+      if (!decodedHtml) {
+        console.log("  ⚠ 无法解码\n");
+        continue;
+      }
+
+      try {
+        result = bank.parse(decodedHtml, msg.envelope);
+      } catch (e) {
+        console.log(`  ⚠ 解析失败: ${e.message}\n`);
+        continue;
+      }
     }
 
     if (!result || !result.transactions || result.transactions.length === 0) {
