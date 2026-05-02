@@ -45,17 +45,17 @@ BANK_NAMES = {
 
 def get_conn():
     return psycopg2.connect(
-        host="localhost",
-        port=5432,
-        user="postgres",
-        password="DB_PASSWORD",
-        database="postgres",
+        host=os.getenv("DB_HOST", "localhost"),
+        port=int(os.getenv("DB_PORT", 5432)),
+        user=os.getenv("DB_USER", "postgres"),
+        password=os.getenv("DB_PASSWORD"),
+        database=os.getenv("DB_NAME", "postgres"),
     )
 
 
 # ============ Pydantic 模型 ============
 
-class TransactioItem(BaseModel):
+class TransactionItem(BaseModel):
     id: int
     bank_code: str
     bank_name: str
@@ -76,7 +76,7 @@ class SearchResult(BaseModel):
     total: int
     sum_spend: float = 0
     sum_repay: float = 0
-    transactions: list[TransactioItem]
+    transactions: list[TransactionItem]
 
 
 # ============ 工具函数 ============
@@ -404,7 +404,8 @@ def ai_search(
     sql = re.sub(r"^```\s*", "", sql)
     sql = sql.strip().rstrip(";")
 
-    # 简单安全检查：只允许 SELECT 语句
+    # 简单安全检查 + 建议：生产环境应使用只读数据库用户（GRANT SELECT ONLY）
+    # 当前黑名单方式无法防止所有绕过（注释、编码等），仅做为基本防线
     if not sql.upper().startswith("SELECT") or "DROP" in sql.upper() or "DELETE" in sql.upper() or "INSERT" in sql.upper() or "UPDATE" in sql.upper() or "TRUNCATE" in sql.upper():
         return {"error": f"生成的 SQL 包含不允许的语句: {sql[:100]}"}
 
@@ -459,7 +460,8 @@ def export_excel(
     from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 
     params = {k: v for k, v in locals().items() if k != "self" and v is not None}
-    # 去掉 category（用户要求删除）
+    # 去掉 category（用户已删除该列，但保留筛选兼容性）
+    params.pop("category", None)
     where_sql, values = build_whereClause(params)
 
     conn = get_conn()
