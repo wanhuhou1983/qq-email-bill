@@ -113,6 +113,8 @@
   <header>
     <h1>💳 信用卡账单查询系统</h1>
     <span class="badge">PostgreSQL</span>
+    <button class="btn btn-secondary" onclick="refreshFromQQ()" style="margin-left:auto;font-size:13px;">🔄 刷新账单</button>
+    <span id="refresh-status" style="font-size:12px;color:#aaa;margin-left:8px;"></span>
   </header>
 
   <!-- Stats -->
@@ -543,6 +545,23 @@ function esc(s) {
     .replace(/</g,'&lt;')
     .replace(/>/g,'&gt;')
     .replace(/"/g,'&quot;');
+}
+
+async function refreshFromQQ() {
+  const status = document.getElementById('refresh-status');
+  status.textContent = '⏳ 正在拉取QQ邮箱最新账单...';
+  try {
+    const r = await fetch('/api/refresh-qq', { method:'POST' });
+    const data = await r.json();
+    if (data.error) {
+      status.textContent = '❌ ' + data.error;
+    } else {
+      status.textContent = `✅ 更新完成: +${data.inserted} 条 (${data.banks}家银行)`;
+      loadMeta();
+    }
+  } catch(e) {
+    status.textContent = '❌ 刷新失败: ' + e.message;
+  }
 }
 
 async function doImport() {

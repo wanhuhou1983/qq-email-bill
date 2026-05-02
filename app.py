@@ -601,6 +601,43 @@ async def import_xls(file: UploadFile = File(...)):
         os.unlink(tmp.name)
 
 
+@app.post("/api/refresh-qq")
+async def refresh_qq():
+    """从QQ邮箱拉取最新账单"""
+    import subprocess, json
+
+    banks = [
+        "abc","boc","bocom","ccb","ceb","cgb","citic","cmb","cmbc","czb","icbc","pab"
+    ]
+    py = os.path.join(os.path.dirname(__file__), ".venv", "Scripts", "python.exe")
+    loader = os.path.join(os.path.dirname(__file__), "bank-loader", "loader.js")
+
+    total_inserted = 0
+    bank_count = 0
+    errors = []
+
+    for code in banks:
+        r = subprocess.run(["node", loader, code], capture_output=True, text=True, encoding="utf-8", errors="replace")
+        output = r.stdout + r.stderr
+        # 解析新增数
+        for line in output.split("\n"):
+            if "新增" in line and "条" in line:
+                m = __import__("re").search(r"新增 (\d+) 条", line)
+                if m:
+                    total_inserted += int(m.group(1))
+        if "新增" in output:
+            bank_count += 1
+        if r.returncode != 0 and not "新增" in output:
+            errors.append(code)
+
+    return {
+        "inserted": total_inserted,
+        "banks": bank_count,
+        "errors": errors,
+        "message": f"刷新完成，{bank_count}家银行有更新，新增{total_inserted}条" + (f"，失败: {errors}" if errors else "")
+    }
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8765)
