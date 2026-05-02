@@ -182,9 +182,7 @@ def ai_search(
     except HTTPException:
         raise
     except Exception as e:
-        import traceback
-        err_detail = f"SQL 执行失败: {str(e)}\n{traceback.format_exc()}"
-        raise HTTPException(status_code=400, detail=err_detail)
+        raise HTTPException(status_code=400, detail=f"SQL 执行失败: {str(e)}")
     finally:
         cur.close(); conn.close()
 

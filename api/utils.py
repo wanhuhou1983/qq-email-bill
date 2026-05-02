@@ -37,7 +37,7 @@ def build_where_clause(params: dict) -> tuple[str, list]:
     ]:
         v = params.get(key)
         if v:
-            conditions.append(f"{col} = %s")
+            conditions.append(f"AND {col} = %s")
             values.append(v)
 
     for key, col, op in [
@@ -45,38 +45,38 @@ def build_where_clause(params: dict) -> tuple[str, list]:
     ]:
         v = bank_code
         if v:
-            conditions.append(f"{col} = %s")
+            conditions.append(f"AND {col} = %s")
             values.append(v)
 
     min_a = params.get("min_amount")
     if min_a is not None:
-        conditions.append("ABS(t.amount) >= %s")
+        conditions.append("AND ABS(t.amount) >= %s")
         values.append(min_a)
 
     max_a = params.get("max_amount")
     if max_a is not None:
-        conditions.append("ABS(t.amount) <= %s")
+        conditions.append("AND ABS(t.amount) <= %s")
         values.append(max_a)
 
     sd = params.get("start_date")
     if sd:
-        conditions.append("t.trans_date >= %s")
+        conditions.append("AND t.trans_date >= %s")
         values.append(sd)
 
     ed = params.get("end_date")
     if ed:
-        conditions.append("t.trans_date <= %s")
+        conditions.append("AND t.trans_date <= %s")
         values.append(ed)
 
     bc = params.get("bill_cycle")
     if bc:
-        conditions.append("(SELECT b.bill_cycle FROM credit_card_bills b WHERE b.id = t.bill_id) = %s")
+        conditions.append("AND (SELECT b.bill_cycle FROM credit_card_bills b WHERE b.id = t.bill_id) = %s")
         values.append(bc)
 
     for key, col in [("keyword", "t.description"), ("description", "t.description")]:
         v = params.get(key)
         if v:
-            conditions.append(f"{col} ILIKE %s")
+            conditions.append(f"AND {col} ILIKE %s")
             values.append(f"%{v}%")
 
     return " ".join(conditions), values
