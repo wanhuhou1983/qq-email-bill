@@ -163,20 +163,30 @@ def ai_search(
 
     conn = get_reader_conn(); cur = conn.cursor()
     try:
-        cur.execute(f"""SELECT COALESCE(SUM(CASE WHEN amount > 0 THEN amount ELSE 0 END), 0),
-                               COALESCE(SUM(CASE WHEN amount < 0 THEN ABS(amount) ELSE 0 END), 0)
-                        FROM ({sql}) AS sub""")
-        sum_spend, sum_repay = cur.fetchone()
-        sum_spend = float(sum_spend); sum_repay = float(sum_repay)
-
+        # 先跑计数
         cur.execute(f"SELECT COUNT(*) FROM ({sql}) AS sub")
         total = cur.fetchone()[0]
 
-        cur.execute(f"SELECT * FROM ({sql}) AS sub LIMIT {size} OFFSET {offset}")
+        # 跑数据（带分页）
+        paged_sql = f"SELECT * FROM ({sql}) AS sub LIMIT {size} OFFSET {offset}"
+        cur.execute(paged_sql)
         if cur.description is None:
             raise HTTPException(status_code=400, detail="AI SQL 无法返回结果")
         cols = [desc[0] for desc in cur.description]
         rows = cur.fetchall()
+
+        # 消费/还款：适配聚合查询（子查询中无 amount 列）和明细查询
+        sum_spend = 0.0; sum_repay = 0.0
+        if "amount" in [c.lower() for c in cols]:
+            try:
+                cur.execute(f"""SELECT COALESCE(SUM(CASE WHEN sub.amount > 0 THEN sub.amount ELSE 0 END), 0),
+                                       COALESCE(SUM(CASE WHEN sub.amount < 0 THEN ABS(sub.amount) ELSE 0 END), 0)
+                                FROM ({sql}) AS sub""")
+                s = cur.fetchone()
+                sum_spend = float(s[0]); sum_repay = float(s[1])
+            except:
+                pass
+
         return {
             "total": total,
             "sum_spend": sum_spend,
