@@ -25,3 +25,23 @@ class SearchResult(BaseModel):
     sum_spend: float = 0
     sum_repay: float = 0
     transactions: list[TransactionItem]
+
+class DebitTransactionItem(BaseModel):
+    id: int
+    bank_code: str
+    account_number: str
+    trans_date: date
+    description: str
+    debit: float = 0
+    credit: float = 0
+    balance: float = 0
+    amount: float = 0
+    counterparty_name: Optional[str] = ''
+    counterparty_bank: Optional[str] = ''
+    counterparty_account: Optional[str] = ''
+
+class DebitSearchResult(BaseModel):
+    total: int
+    sum_income: float = 0
+    sum_expense: float = 0
+    transactions: list[DebitTransactionItem]

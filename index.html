@@ -134,17 +134,36 @@
   .cycle-dropdown .cy-item:hover { background:#f5f3ff; color:#333; }
   .cycle-dropdown .cy-item.active { background:#ede9fe; color:var(--primary); font-weight:600; border-left-color:var(--primary); }
   .cycle-dropdown .cy-item.today { color:#999; font-size:11px; }
+
+  /* 标签页切换 */
+  .tab-bar { display:flex; gap:0; margin-bottom:16px; }
+  .tab-bar button {
+    flex:1; padding:10px; font-size:15px; font-weight:600; border:1px solid var(--border);
+    background:#f9fafb; color:#999; cursor:pointer; transition:all .15s;
+    border-radius:0;
+  }
+  .tab-bar button:first-child { border-radius:8px 0 0 8px; }
+  .tab-bar button:last-child { border-radius:0 8px 8px 0; }
+  .tab-bar button.active { background:var(--primary); color:#fff; border-color:var(--primary); }
 </style>
 </head>
 <body>
 <div class="container">
 
   <header>
-    <h1>💳 信用卡账单查询系统</h1>
+    <h1>💳 账单查询系统</h1>
     <span class="badge">PostgreSQL</span>
     <button class="btn btn-secondary" onclick="refreshFromQQ()" style="margin-left:auto;font-size:13px;">🔄 刷新账单</button>
     <span id="refresh-status" style="font-size:12px;color:#aaa;margin-left:8px;"></span>
   </header>
+
+  <div class="tab-bar">
+    <button class="active" id="tab-credit" onclick="switchTab('credit')">信用卡</button>
+    <button id="tab-debit" onclick="switchTab('debit')">借记卡</button>
+  </div>
+
+  <!-- ====== 信用卡 ====== -->
+  <div id="credit-section">
 
   <!-- Stats -->
   <div class="stats" id="stats"></div>
@@ -673,6 +692,89 @@ function esc(s) {
     .replace(/"/g,'&quot;');
 }
 
+// ============ 标签页切换 ============
+function switchTab(tab) {
+  document.getElementById('tab-credit').classList.toggle('active', tab === 'credit');
+  document.getElementById('tab-debit').classList.toggle('active', tab === 'debit');
+  document.getElementById('credit-section').style.display = tab === 'credit' ? '' : 'none';
+  document.getElementById('debit-section').style.display = tab === 'debit' ? '' : 'none';
+  if (tab === 'debit' && !dCurrentTotal) doDebitSearch(0);
+}
+
+// ============ 借记卡查询 ============
+let dPageSize = 50;
+let dCurrentTotal = 0;
+
+function fDebit(id) { const e=document.getElementById(id); return e?e.value:''; }
+
+async function doDebitSearch(page) {
+  const params = new URLSearchParams();
+  params.set('size', dPageSize);
+  params.set('page', page);
+  if (fDebit('d-start')) params.set('start_date', fDebit('d-start'));
+  if (fDebit('d-end')) params.set('end_date', fDebit('d-end'));
+  if (fDebit('d-keyword')) params.set('keyword', fDebit('d-keyword'));
+
+  try {
+    const data = await api('/api/debit/search?' + params.toString());
+    dCurrentTotal = data.total;
+    renderDebitTable(data);
+    renderDebitPager(page);
+  } catch(e) {
+    document.getElementById('d-result-body').innerHTML = '<tr><td colspan="8" class="error-msg">请求失败: ' + e.message + '</td></tr>';
+  }
+}
+
+function renderDebitTable(data) {
+  const rows = data.transactions;
+  const totalsEl = document.getElementById('d-result-totals');
+  const countEl = document.getElementById('d-result-count');
+
+  if (data.total > 0) {
+    totalsEl.innerHTML = '<span style="color:#059669;font-weight:600;">收入 &yen;' + data.sum_income.toLocaleString('zh-CN',{minimumFractionDigits:2}) + '</span> &brvbar; <span style="color:#dc2626;font-weight:600;">支出 &yen;' + data.sum_expense.toLocaleString('zh-CN',{minimumFractionDigits:2}) + '</span>';
+    countEl.textContent = '— 共 ' + data.total.toLocaleString() + ' 条';
+  } else {
+    totalsEl.textContent = ''; countEl.textContent = '';
+  }
+
+  if (!rows.length) {
+    document.getElementById('d-result-body').innerHTML = '<tr><td colspan="8" style="text-align:center;color:#9ca3af;padding:30px;">暂无数据</td></tr>';
+    return;
+  }
+
+  document.getElementById('d-result-body').innerHTML = rows.map(function(r){
+    var income = r.credit > 0 ? '<span style="color:#059669;">+' + r.credit.toLocaleString('zh-CN',{minimumFractionDigits:2}) + '</span>' : '';
+    var expense = r.debit > 0 ? '<span style="color:#dc2626;">-' + r.debit.toLocaleString('zh-CN',{minimumFractionDigits:2}) + '</span>' : '';
+    var type = r.amount >= 0 ? '<span style="color:#059669;">收入</span>' : '<span style="color:#dc2626;">支出</span>';
+    return '<tr>' +
+      '<td>' + r.trans_date + '</td>' +
+      '<td>' + type + '</td>' +
+      '<td title="' + esc(r.description) + '">' + esc(r.description) + '</td>' +
+      '<td>' + esc(r.counterparty_name||'') + '</td>' +
+      '<td>' + esc(r.counterparty_bank||'') + '</td>' +
+      '<td style="text-align:right;">' + income + '</td>' +
+      '<td style="text-align:right;">' + expense + '</td>' +
+      '<td style="text-align:right;">' + r.balance.toLocaleString('zh-CN',{minimumFractionDigits:2}) + '</td>' +
+    '</tr>';
+  }).join('');
+}
+
+function renderDebitPager(currentPage) {
+  var totalPages = Math.ceil(dCurrentTotal / dPageSize);
+  var el = document.getElementById('d-pager');
+  if (totalPages <= 1) { el.innerHTML = ''; return; }
+  var html = '';
+  if (currentPage > 0) html += '<button onclick="doDebitSearch(' + (currentPage-1) + ')">&lsaquo; 上一页</button>';
+  html += '<span style="margin:0 12px;font-size:13px;color:#666;">第 ' + (currentPage+1) + '/' + totalPages + ' 页</span>';
+  if (currentPage < totalPages - 1) html += '<button onclick="doDebitSearch(' + (currentPage+1) + ')">下一页 &rsaquo;</button>';
+  el.innerHTML = html;
+}
+
+function resetDebitFilters() {
+  ['d-start','d-end','d-keyword'].forEach(function(id){ document.getElementById(id).value = ''; });
+  doDebitSearch(0);
+}
+
 async function refreshFromQQ() {
   const status = document.getElementById('refresh-status');
   status.textContent = '⏳ 正在拉取QQ邮箱最新账单...';
@@ -723,5 +825,54 @@ async function doImport() {
 
 loadMeta();
 </script>
+
+<!-- ====== 借记卡 ====== -->
+<div id="debit-section" style="display:none;">
+  <div class="panel">
+    <div class="panel-title">🔍 借记卡查询</div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>起始日期</label>
+        <input type="date" id="d-start">
+      </div>
+      <div class="form-group">
+        <label>结束日期</label>
+        <input type="date" id="d-end">
+      </div>
+      <div class="form-group">
+        <label>关键词</label>
+        <input type="text" id="d-keyword" placeholder="摘要或交易对手" style="padding:6px 10px;border:1px solid #ccc;border-radius:6px;font-size:14px;width:100%;box-sizing:border-box;">
+      </div>
+    </div>
+    <div class="form-row" style="margin-top:14px;">
+      <button class="btn btn-primary" onclick="doDebitSearch(0)">🔍 查询</button>
+      <button class="btn btn-secondary" onclick="resetDebitFilters()">重置</button>
+    </div>
+  </div>
+  <div class="panel">
+    <div class="results-header">
+      <div class="panel-title" style="margin:0">📋 借记卡交易 <span id="d-result-count"></span> <span id="d-result-totals" style="font-size:13px;font-weight:400;color:#555;"></span></div>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>日期</th>
+            <th>交易类型</th>
+            <th>摘要</th>
+            <th>交易对手</th>
+            <th>对方银行</th>
+            <th>收入</th>
+            <th>支出</th>
+            <th>余额</th>
+          </tr>
+        </thead>
+        <tbody id="d-result-body"></tbody>
+      </table>
+    </div>
+    <div id="d-pager" class="pager"></div>
+  </div>
+</div>
+
 </body>
 </html>

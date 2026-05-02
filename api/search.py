@@ -9,7 +9,7 @@ from fastapi import APIRouter, HTTPException, Query
 from openai import OpenAI
 
 from db import get_conn, get_reader_conn
-from api.models import SearchResult
+from api.models import SearchResult, DebitSearchResult
 from api.utils import row_to_dict, build_where_clause
 
 router = APIRouter(tags=["search"])
@@ -198,6 +198,83 @@ def ai_search(
         raise
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"SQL 执行失败: {str(e)}")
+    finally:
+        cur.close(); conn.close()
+
+
+# ============ 借记卡查询 ============
+
+@router.get("/debit/search", response_model=DebitSearchResult)
+def debit_search(
+    page: int = Query(0, ge=0),
+    size: int = Query(20, ge=0, le=200),
+    bank_code: Optional[str] = Query(None),
+    min_amount: Optional[float] = Query(None),
+    max_amount: Optional[float] = Query(None),
+    start_date: Optional[date] = Query(None),
+    end_date: Optional[date] = Query(None),
+    keyword: Optional[str] = Query(None),
+    counterparty_name: Optional[str] = Query(None),
+):
+    conditions = []
+    values = []
+
+    if bank_code:
+        conditions.append("AND bank_code = %s"); values.append(bank_code)
+    if min_amount is not None:
+        conditions.append("AND ABS(amount) >= %s"); values.append(min_amount)
+    if max_amount is not None:
+        conditions.append("AND ABS(amount) <= %s"); values.append(max_amount)
+    if start_date:
+        conditions.append("AND trans_date >= %s"); values.append(start_date)
+    if end_date:
+        conditions.append("AND trans_date <= %s"); values.append(end_date)
+    if keyword:
+        conditions.append("AND (description ILIKE %s OR counterparty_name ILIKE %s)")
+        values.append(f"%{keyword}%"); values.append(f"%{keyword}%")
+    if counterparty_name:
+        conditions.append("AND counterparty_name ILIKE %s")
+        values.append(f"%{counterparty_name}%")
+
+    where = " ".join(conditions)
+    offset = page * size
+
+    conn = get_reader_conn(); cur = conn.cursor()
+    try:
+        cur.execute(f"""SELECT COALESCE(SUM(CASE WHEN amount > 0 THEN amount ELSE 0 END), 0),
+                               COALESCE(SUM(CASE WHEN amount < 0 THEN ABS(amount) ELSE 0 END), 0)
+                        FROM debit_card_transactions WHERE 1=1 {where}""", values)
+        r = cur.fetchone()
+        sum_income = float(r[0]); sum_expense = float(r[1])
+
+        cur.execute(f"SELECT COUNT(*) FROM debit_card_transactions WHERE 1=1 {where}", values)
+        total = cur.fetchone()[0]
+
+        if size == 0:
+            return DebitSearchResult(total=total, sum_income=sum_income, sum_expense=sum_expense, transactions=[])
+
+        cur.execute(f"""
+            SELECT id, bank_code, account_number, trans_date, description,
+                   debit, credit, balance, amount,
+                   COALESCE(counterparty_name,'') as counterparty_name,
+                   COALESCE(counterparty_bank,'') as counterparty_bank,
+                   COALESCE(counterparty_account,'') as counterparty_account
+            FROM debit_card_transactions WHERE 1=1 {where}
+            ORDER BY trans_date DESC, id DESC LIMIT %s OFFSET %s
+        """, values + [size, offset])
+        cols = [desc[0] for desc in cur.description]
+        return DebitSearchResult(total=total, sum_income=sum_income, sum_expense=sum_expense,
+                                 transactions=[row_to_dict(r, cols) for r in cur.fetchall()])
+    finally:
+        cur.close(); conn.close()
+
+
+@router.get("/debit/banks")
+def debit_banks():
+    conn = get_reader_conn(); cur = conn.cursor()
+    try:
+        cur.execute("SELECT DISTINCT bank_code FROM debit_card_transactions ORDER BY bank_code")
+        return [row[0] for row in cur.fetchall()]
     finally:
         cur.close(); conn.close()
 
