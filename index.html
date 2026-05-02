@@ -478,17 +478,27 @@ function renderTable(rows, sumSpend, sumRepay) {
   }
 
   document.getElementById('result-body').innerHTML = rows.map(r => {
-    const amtCls = r.amount >= 0 ? 'pos' : 'neg';
-    const amtStr = (r.amount >= 0 ? '+' : '') + r.amount.toLocaleString('zh-CN', {minimumFractionDigits: 2});
+    // 兼容AI查询的聚合结果(列名不固定)
+    const amt = r.amount ?? r.sum ?? r.total ?? r.total_spent ?? 0;
+    const bank = r.bank_code || '';
+    const holder = r.cardholder || '';
+    const last4 = r.card_last4 || '';
+    const tdate = r.trans_date || '';
+    const pdate = r.post_date || '';
+    const desc = r.description || Object.values(r).filter(v=>typeof v==='string').join(' | ') || '';
+    const cat = r.category || '';
+    const ttype = r.trans_type || 'O';
+    const amtCls = amt >= 0 ? 'pos' : 'neg';
+    const amtStr = (amt >= 0 ? '+' : '') + amt.toLocaleString('zh-CN', {minimumFractionDigits: 2});
     return `<tr>
-      <td>${bankTag(r.bank_code)}</td>
-      <td>${esc(r.cardholder||'')}</td>
-      <td>****${esc(r.card_last4||'')}</td>
-      <td><div>${r.trans_date}</div></td>
-      <td><div>${r.post_date}</div></td>
-      <td class="desc-text" title="${esc(r.description)}">${esc(r.description)}</td>
-      <td>${esc(r.category||'')}</td>
-      <td>${typeTag(r.trans_type)}</td>
+      <td>${bankTag(bank)}</td>
+      <td>${esc(holder)}</td>
+      <td>${last4 ? '****'+esc(last4) : '-'}</td>
+      <td><div>${tdate}</div></td>
+      <td><div>${pdate}</div></td>
+      <td class="desc-text" title="${esc(desc)}">${esc(desc)}</td>
+      <td>${esc(cat)}</td>
+      <td>${typeTag(ttype)}</td>
       <td class="amount ${amtCls}">${amtStr}</td>
     </tr>`;
   }).join('');
@@ -497,6 +507,15 @@ function renderTable(rows, sumSpend, sumRepay) {
   // 更新总计
   const totalsEl = document.getElementById('result-totals');
   if (sumSpend !== undefined && sumSpend !== null) {
+    // AI聚合查询时 sum_spend/repay可能为0但有实际聚合值
+    if (sumSpend === 0 && rows.length === 1) {
+      const first = rows[0];
+      const aggAmt = first.amount ?? first.sum ?? first.total ?? first.total_spent ?? null;
+      if (aggAmt !== null && aggAmt > 0) {
+        totalsEl.innerHTML = `<span class="amount pos" style="font-weight:700;">结果: ¥${aggAmt.toLocaleString('zh-CN',{minimumFractionDigits:2})}</span>`;
+        return;
+      }
+    }
     totalsEl.innerHTML = `<span class="amount pos" style="font-weight:700;">支出 ¥${sumSpend.toLocaleString('zh-CN',{minimumFractionDigits:2})}</span> │ <span class="amount neg">还款 ¥${sumRepay.toLocaleString('zh-CN',{minimumFractionDigits:2})}</span>`;
   } else {
     totalsEl.textContent = '';
