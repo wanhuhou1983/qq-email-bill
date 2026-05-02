@@ -260,7 +260,7 @@ def debit_search(
                    COALESCE(counterparty_bank,'') as counterparty_bank,
                    COALESCE(counterparty_account,'') as counterparty_account
             FROM debit_card_transactions WHERE 1=1 {where}
-            ORDER BY trans_date DESC, id DESC LIMIT %s OFFSET %s
+            ORDER BY trans_date ASC, id ASC LIMIT %s OFFSET %s
         """, values + [size, offset])
         cols = [desc[0] for desc in cur.description]
         return DebitSearchResult(total=total, sum_income=sum_income, sum_expense=sum_expense,
