@@ -105,6 +105,35 @@
   .filter-dropdown-item input[type=checkbox] { margin:0; }
   .filter-dropdown-item .badge { font-size:11px; color:var(--text-secondary); margin-left:auto; }
   .th-wrap { position:relative; }
+
+  /* 账期下拉选择器 */
+  .cycle-wrap { position:relative; width:100%; }
+  .cycle-trigger {
+    padding:7px 11px; border:1px solid var(--border); border-radius:6px;
+    font-size:14px; cursor:pointer; background:#fff; color:var(--text-secondary);
+    display:flex; align-items:center; justify-content:space-between;
+    transition:border-color .15s, box-shadow .15s;
+  }
+  .cycle-trigger:hover { border-color:#aaa; }
+  .cycle-trigger.active { border-color:var(--primary); box-shadow:0 0 0 2px rgba(124,58,237,.12); }
+  .cycle-trigger.has-value { color:#333; font-weight:500; }
+  .cycle-trigger::after { content:'▾'; font-size:11px; color:#999; margin-left:6px; transition:transform .2s; }
+  .cycle-trigger.active::after { transform:rotate(180deg); }
+  .cycle-dropdown {
+    display:none; position:absolute; top:calc(100% + 4px); left:0; z-index:100;
+    background:#fff; border:1px solid #e5e7eb; border-radius:8px;
+    box-shadow:0 8px 24px rgba(0,0,0,.12); width:100%; max-height:220px; overflow-y:auto;
+    scrollbar-width:thin; padding:4px 0;
+  }
+  .cycle-dropdown.show { display:block; }
+  .cycle-dropdown .cy-item {
+    padding:7px 14px; font-size:13px; cursor:pointer; text-align:center;
+    transition:background .12s; color:#555; font-weight:400;
+    border-left:3px solid transparent;
+  }
+  .cycle-dropdown .cy-item:hover { background:#f5f3ff; color:#333; }
+  .cycle-dropdown .cy-item.active { background:#ede9fe; color:var(--primary); font-weight:600; border-left-color:var(--primary); }
+  .cycle-dropdown .cy-item.today { color:#999; font-size:11px; }
 </style>
 </head>
 <body>
@@ -127,7 +156,7 @@
       <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
         <input type="file" id="import-file" accept=".xls,.xlsx" style="font-size:14px;">
         <select id="import-bank" style="padding:6px 10px;border:1px solid #ccc;border-radius:6px;font-size:14px;">
-          <option value="SPDB">浦发银行</option>
+          <option value="SPDB">浦发</option>
           <option value="CCB">建设银行</option>
           <option value="ICBC">工商银行</option>
           <option value="ABC">农业银行</option>
@@ -207,7 +236,13 @@
       </div>
       <div class="form-group">
         <label>账期</label>
-        <input type="month" id="f-cycle" placeholder="2026-04">
+        <div class="cycle-wrap">
+          <div class="cycle-trigger" id="f-cycle-trigger" onclick="toggleCycleList()">----</div>
+          <div class="cycle-dropdown" id="f-cycle-dropdown">
+            <div id="f-cycle-list"></div>
+          </div>
+          <input type="hidden" id="f-cycle" value="">
+        </div>
       </div>
     </div>
     <div class="form-row" style="margin-top:14px;">
@@ -291,6 +326,8 @@ async function api(url) {
   return r.json();
 }
 
+let _banks = []; // 全部银行数据（含持卡人）
+
 async function loadMeta() {
   try {
     const [cardholders, banks, currencies] = await Promise.all([
@@ -299,16 +336,16 @@ async function loadMeta() {
       api('/api/currencies'),
     ]);
 
+    _banks = banks;
+
     const opts = v => [{v:'',t:'全部'}, ...v.map(x=>({v:x,t:x}))];
     fillSelect('f-cardholder', opts(cardholders));
     fillSelect('f-currency', opts(currencies));
 
-    const bankOpts = [{v:'',t:'全部'}];
-    for (const b of banks) {
-      const name = BANK_NAMES[b.bank_code] || b.bank_code;
-      bankOpts.push({v: b.bank_code, t: `${name} (${b.cardholder}) [${b.count}条]`});
-    }
-    fillSelect('f-bank', bankOpts);
+    updateBankOptions();
+
+    // 持卡人变更时刷新银行选项
+    document.getElementById('f-cardholder').addEventListener('change', updateBankOptions);
 
     // Stats - 直接取后台聚合值
     const stats = await api('/api/search?size=0');
@@ -327,6 +364,9 @@ async function loadMeta() {
       <div class="stat-card"><div class="label">信用卡数量</div><div class="value">${cardCount}</div></div>
     `;
 
+    // 初始化账期滚动选择器
+    initCyclePicker();
+
     // 默认查询
     doSearch(0);
   } catch(e) { console.error(e); }
@@ -339,9 +379,77 @@ function fillSelect(id, opts) {
 
 function resetFilters() {
   document.querySelectorAll('#f-cardholder,#f-bank,#f-type,#f-currency').forEach(e => e.value = '');
-  document.querySelectorAll('#f-min-amt,#f-max-amt,#f-start,#f-end,#f-cycle').forEach(e => e.value = '');
+  document.querySelectorAll('#f-min-amt,#f-max-amt,#f-start,#f-end').forEach(e => e.value = '');
+  document.getElementById('f-cycle').value = '';
+  document.querySelectorAll('#f-cycle-list .cy-item').forEach(el => el.classList.remove('active'));
+  const trigger = document.getElementById('f-cycle-trigger');
+  trigger.textContent = '----';
+  trigger.classList.remove('has-value');
   isAiMode = false;
   doSearch(0);
+}
+
+// ============ 账期下拉选择器 ============
+function initCyclePicker() {
+  const list = document.getElementById('f-cycle-list');
+  const now = new Date();
+  const items = [];
+  for (let i = -24; i <= 24; i++) {
+    const d = new Date(now.getFullYear(), now.getMonth() + i, 1);
+    const ym = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+    items.push(ym);
+  }
+  list.innerHTML = items.map(ym =>
+    `<div class="cy-item" data-ym="${ym}" onclick="selectCycle(this)">${ym.replace('-', '')}</div>`
+  ).join('');
+}
+
+function toggleCycleList() {
+  const dd = document.getElementById('f-cycle-dropdown');
+  const trigger = document.getElementById('f-cycle-trigger');
+  dd.classList.toggle('show');
+  trigger.classList.toggle('active', dd.classList.contains('show'));
+  if (dd.classList.contains('show')) {
+    // 滚动到已选项或当前月
+    const active = document.querySelector('#f-cycle-list .cy-item.active');
+    if (active) active.scrollIntoView({ block: 'center' });
+  }
+}
+
+function selectCycle(el) {
+  document.querySelectorAll('#f-cycle-list .cy-item').forEach(e => e.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById('f-cycle').value = el.dataset.ym;
+  const trigger = document.getElementById('f-cycle-trigger');
+  trigger.textContent = el.dataset.ym.replace('-', '');
+  trigger.classList.add('has-value');
+  document.getElementById('f-cycle-dropdown').classList.remove('show');
+  trigger.classList.remove('active');
+  doSearch(0);
+}
+
+// 点击外面关闭下拉
+document.addEventListener('click', function(e) {
+  if (!e.target.closest('.cycle-wrap')) {
+    document.getElementById('f-cycle-dropdown').classList.remove('show');
+    document.getElementById('f-cycle-trigger').classList.remove('active');
+  }
+});
+
+function updateBankOptions() {
+  const holder = document.getElementById('f-cardholder').value;
+  const filtered = holder
+    ? _banks.filter(b => b.cardholder === holder)
+    : _banks;
+  const seen = new Set();
+  const opts = [{v:'',t:'全部'}];
+  for (const b of filtered) {
+    if (!seen.has(b.bank_code)) {
+      seen.add(b.bank_code);
+      opts.push({v: b.bank_code, t: BANK_NAMES[b.bank_code] || b.bank_code});
+    }
+  }
+  fillSelect('f-bank', opts);
 }
 
 // ============ 卡号筛选 ============
