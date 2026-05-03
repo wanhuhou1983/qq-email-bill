@@ -121,6 +121,49 @@ def search(
         cur.close(); conn.close()
 
 
+@router.get("/daily")
+def daily(
+    limit: int = Query(0, ge=0),
+    offset: int = Query(0, ge=0),
+    bank_code: Optional[str] = Query(None, alias="bank_code"),
+    cardholder: Optional[str] = Query(None),
+    min_amount: Optional[float] = Query(None),
+    max_amount: Optional[float] = Query(None),
+    start_date: Optional[date] = Query(None),
+    end_date: Optional[date] = Query(None),
+    category: Optional[str] = Query(None),
+    bill_cycle: Optional[str] = Query(None),
+    trans_type: Optional[str] = Query(None),
+    currency: Optional[str] = Query(None),
+    card_last4: Optional[str] = Query(None),
+    keyword: Optional[str] = Query(None),
+    description: Optional[str] = Query(None),
+    bill_id: Optional[int] = Query(None),
+):
+    params = {k: v for k, v in locals().items() if k not in ("self", "limit", "offset") and v is not None}
+    where_sql, values = build_where_clause(params)
+
+    conn = get_conn(); cur = conn.cursor()
+    try:
+        cur.execute(f"""
+            SELECT t.trans_date,
+                   COALESCE(SUM(CASE WHEN t.amount > 0 THEN t.amount ELSE 0 END), 0) as spend,
+                   COALESCE(SUM(CASE WHEN t.amount < 0 THEN ABS(t.amount) ELSE 0 END), 0) as repay,
+                   COUNT(*) as count
+            FROM credit_card_transactions t
+            WHERE 1=1 {where_sql}
+            GROUP BY t.trans_date
+            ORDER BY t.trans_date
+        """, values)
+        daily = [{"date": r[0].isoformat() if hasattr(r[0], 'isoformat') else str(r[0]),
+                   "spend": float(r[1]),
+                   "repay": float(r[2]),
+                   "count": r[3]} for r in cur.fetchall()]
+        return {"daily": daily}
+    finally:
+        cur.close(); conn.close()
+
+
 @router.get("/ai-search")
 def ai_search(
     q: str = Query(..., description="自然语言查询"),
