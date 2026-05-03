@@ -70,8 +70,20 @@ def build_where_clause(params: dict) -> tuple[str, list]:
 
     bc = params.get("bill_cycle")
     if bc:
-        conditions.append("AND (SELECT b.bill_cycle FROM credit_card_bills b WHERE b.id = t.bill_id) = %s")
-        values.append(bc)
+        # 账期匹配: 优先bill_cycle字段, 没有则用交易日期范围(如农行无bill_cycle)
+        from datetime import datetime
+        try:
+            y, m = int(bc[:4]), int(bc[5:7])
+            start_d = f"{y:04d}-{m:02d}-01"
+            if m == 12:
+                end_d = f"{y+1:04d}-01-01"
+            else:
+                end_d = f"{y:04d}-{m+1:02d}-01"
+            conditions.append("AND ((SELECT b.bill_cycle FROM credit_card_bills b WHERE b.id = t.bill_id) = %s OR (t.trans_date >= %s AND t.trans_date < %s))")
+            values.extend([bc, start_d, end_d])
+        except:
+            conditions.append("AND (SELECT b.bill_cycle FROM credit_card_bills b WHERE b.id = t.bill_id) = %s")
+            values.append(bc)
 
     for key, col in [("keyword", "t.description"), ("description", "t.description")]:
         v = params.get(key)

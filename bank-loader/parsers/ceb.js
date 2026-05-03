@@ -46,18 +46,24 @@ const bank = {
 
       // 金额：带(存入)/(支出)前后缀
       let amount = null;
+      let transType = null;
+      let cardLast4 = "";
       for (const cell of cells) {
+        // 卡号：4位纯数字，不是年份不是金额
+        if (/^\d{3,4}$/.test(cell) && !cell.match(/^(19|20)\d{2}$/)) {
+          cardLast4 = cell;
+        }
         // (存入)或(还款)在前: (存入)2.01
         const m1 = cell.match(/[\(（](存入|还款)[\)）]\s*([\d,]+(?:\.\d{1,2})?)/);
         if (m1) {
           const v = parseFloat(m1[2].replace(/,/g, ""));
-          if (v > 0 && v < 5000000) { amount = -v; break; }
+          if (v > 0 && v < 5000000) { amount = -v; transType = "REPAY"; break; }
         }
         // (支出)在前
         const m2 = cell.match(/[\(（]支出[\)）]\s*([\d,]+(?:\.\d{1,2})?)/);
         if (m2) {
           const v = parseFloat(m2[1].replace(/,/g, ""));
-          if (v > 0 && v < 5000000) { amount = v; break; }
+          if (v > 0 && v < 5000000) { amount = v; transType = "SPEND"; break; }
         }
         // 存入/支出在后: 数字(存入) 或 数字(支出)
         const m3 = cell.match(/([\d,]+(?:\.\d{1,2})?)\s*[\(（](存入|还款|支出)[\)）]/);
@@ -65,6 +71,7 @@ const bank = {
           const v = parseFloat(m3[1].replace(/,/g, ""));
           if (v > 0 && v < 5000000) {
             amount = (m3[2] === "存入" || m3[2] === "还款") ? -v : v;
+            transType = (m3[2] === "存入" || m3[2] === "还款") ? "REPAY" : "SPEND";
             break;
           }
         }
@@ -72,8 +79,14 @@ const bank = {
         const m4 = cell.match(/^(-?\d+\.\d{1,2})$/);
         if (m4) {
           const v = parseFloat(m4[1]);
-          if (v > 0 && v < 5000000) { amount = v; break; }
-          if (v < 0 && Math.abs(v) < 5000000) { amount = v; break; }
+          if (v > 0 && v < 5000000) { amount = v; transType = "SPEND"; break; }
+          if (v < 0 && Math.abs(v) < 5000000) { amount = v; transType = "REPAY"; break; }
+        }
+        // 纯正数（分期本金等）
+        const m5 = cell.match(/^([\d,]+)\.00$/);
+        if (m5 && !cell.match(/^\d{3,4}$/)) {
+          const v = parseFloat(m5[1].replace(/,/g, ""));
+          if (v > 0 && v < 5000000) { amount = v; transType = "SPEND"; break; }
         }
       }
       if (amount === null || Math.abs(amount) > 5000000) continue;
@@ -93,7 +106,8 @@ const bank = {
         post_date: dates[1],
         description: desc,
         amount: amount,
-        card_last4: "",
+        card_last4: cardLast4,
+        trans_type: transType,
       });
     }
     return trans;

@@ -49,28 +49,31 @@ const bank = {
       const dates = cells.filter((c) => /^\d{8}$/.test(c));
       if (dates.length < 2) continue;
 
-      // 找金额
+      // 找金额：¥ -9,000.00 或 -9,000.00 或 ¥ 5.00
       let amt = null;
       for (const c of cells) {
-        // ¥ 5.00 或 ¥ -10000.00
-        const m = c.match(/[¥￥]\s*(-?\d[\d,]*\.?\d*)/);
-        if (m) {
-          const val = parseFloat(m[1].replace(/,/g, ""));
-          if (Math.abs(val) > 0 && Math.abs(val) < 5000000) {
-            amt = val;
-            break;
-          }
+        // 带¥前缀
+        const m1 = c.match(/[¥￥]\s*(-?\d[\d,]*\.?\d*)/);
+        if (m1) {
+          const val = parseFloat(m1[1].replace(/,/g, ""));
+          if (Math.abs(val) > 0 && Math.abs(val) < 5000000) { amt = val; break; }
+        }
+        // 纯数字（无¥前缀）
+        const m2 = c.match(/^(-?\d{1,3}(?:,\d{3})*(?:\.\d{1,2})?)$/);
+        if (m2) {
+          const val = parseFloat(m2[1].replace(/,/g, ""));
+          if (Math.abs(val) > 0 && Math.abs(val) < 5000000) { amt = val; break; }
         }
       }
       if (amt === null) continue;
 
-      // 找描述（含中文且非日期/金额）
+      // 找描述（含中文且非日期/金额，至少2字）
       let desc = "";
       for (const c of cells) {
         if (
           /[\u4e00-\u9fff]/.test(c) &&
           !/^\d{8}$/.test(c) &&
-          c.length > 3 &&
+          c.length >= 2 &&
           !/^[¥￥\s\d.,-]+$/.test(c)
         ) {
           desc = c.substring(0, 200);
@@ -90,12 +93,23 @@ const bank = {
       // YYYYMMDD → YYYY-MM-DD
       const fmt = (d) => `${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6, 8)}`;
 
+      // 交易类型
+      let transType;
+      if (amt > 0) {
+        transType = "SPEND";
+        if (desc.includes("利息")) transType = "INSTALLMENT_INT";
+        if (desc.includes("摊消") || desc.includes("本金")) transType = "INSTALLMENT_PRIN";
+      } else {
+        transType = desc.includes("还款") ? "REPAY" : "REFUND";
+      }
+
       trans.push({
         trans_date: fmt(dates[0]),
         post_date: fmt(dates[1]),
         description: desc,
         amount: amt,
         card_last4: cardLast4,
+        trans_type: transType,
       });
     }
 

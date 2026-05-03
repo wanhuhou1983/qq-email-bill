@@ -1,11 +1,16 @@
 /**
  * bank-loader/parsers/cmb.js — 招商银行信用卡账单解析器
  *
- * 编码: QP + UTF-8 (loader自动处理)
- * 格式: 大段压缩HTML，交易用TABLE呈现
- *       日期 MMDD (4位)，金额 ¥ 前缀
+ * 编码: QP + UTF-8
+ * 格式: 每字段单独一行，分组结构：
+ *   还款: [MMDD] [描述] [¥金额] [卡号] [交易金额]
+ *   消费: [MMDD] [MMDD] [描述] [¥金额] [卡号] [CN] [交易金额]
  */
 "use strict";
+
+const CARDHOLDER_MAP = {
+  "1251": "吴华辉", "8022": "吴华辉", "1481": "吴华辉", "0696": "吴华辉",
+};
 
 const bank = {
   code: "CMB", name: "招商银行", defaultCardholder: "吴华辉", defaultCardLast4: "8022",
@@ -13,77 +18,87 @@ const bank = {
   searchQueries: [{ from: "cmbchina" }, { subject: "招商银行信用卡" }],
 
   parse(html, envelope) {
-    // 在 > 后加换行，使HTML可分行处理
-    const broken = html.replace(/>/g, ">\n");
-    const noJS = broken
+    const year = this._inferYear(html);
+    const text = html
+      .replace(/>/g, ">\n")
       .replace(/<script[\s\S]*?<\/script>/gi, "")
-      .replace(/<style[\s\S]*?<\/style>/gi, "");
-    const text = noJS
+      .replace(/<style[\s\S]*?<\/style>/gi, "")
       .replace(/<[^>]+>/g, "\n")
       .replace(/&nbsp;/g, " ")
       .replace(/&amp;/g, "&")
+      .replace(/&yen;/g, "¥")
       .replace(/[\t\r\n]+/g, "\n")
       .replace(/\n\s+\n/g, "\n")
       .trim();
 
     const lines = text.split("\n").map(l => l.trim()).filter(l => l);
     const trans = [];
-    const seen = new Set();
+    let section = "";
 
-    // 年份推断
-    let year = new Date().getFullYear();
-    for (const l of lines) {
-      const m = l.match(/(\d{4})\/\d{2}\/\d{2}\s*-\s*\d{2}\/\d{2}\/\d{2}/);
-      if (m) { year = parseInt(m[1]); break; }
-    }
-
-    // 遍历：找 4 位日期 (MMDD) → 后面跟描述和 ¥ 金额
     for (let i = 0; i < lines.length; i++) {
       const l = lines[i];
-      // 跳过非日期行
+      if (l === "还款") { section = "repay"; continue; }
+      if (l === "消费") { section = "spend"; continue; }
+
+      // 找MMDD日期
       if (!/^\d{4}$/.test(l)) continue;
       const n = parseInt(l);
       if (n < 101 || n > 1231) continue;
-      const tM = Math.floor(n / 100), tD = n % 100;
-      if (tM < 1 || tM > 12 || tD < 1 || tD > 31) continue;
 
-      // 找金额 (从当前行往后找 5 行内是否有 ¥)
-      let amount = null, desc = "";
-      for (let j = i; j < Math.min(i + 5, lines.length); j++) {
-        const am = lines[j].match(/[¥￥]\s*(-?\d[\d,]*\.?\d*)/);
-        if (am) {
-          amount = parseFloat(am[1].replace(/,/g, ""));
-          break;
-        }
-        // 也可能是纯数字金额（不带¥）
-        const am2 = lines[j].match(/^(-?\d+\.\d{2})$/);
-        if (am2) {
-          amount = parseFloat(am2[1]);
-          break;
-        }
+      if (section === "spend") {
+        // 消费：第一行是交易日，下一行是记账日
+        if (i + 5 >= lines.length) continue;
+        const postDate = lines[i + 1];
+        if (!/^\d{4}$/.test(postDate)) continue;
+        const desc = lines[i + 2] || "";
+        const amtLine = lines[i + 3] || "";
+        const amtMatch = amtLine.match(/[¥￥]\s*(-?\d[\d,]*\.?\d*)/);
+        const amount = amtMatch ? parseFloat(amtMatch[1].replace(/,/g, "")) : null;
+        const cardLast4 = lines[i + 4] || "";
+        if (!desc || amount === null || Math.abs(amount) > 5000000) continue;
+
+        const fmt = (d) => {
+          const mo = parseInt(d.slice(0,2)), day = parseInt(d.slice(2,4));
+          let y = year; if (mo > 6) y = year - 1;
+          return `${y}-${String(mo).padStart(2,"0")}-${String(day).padStart(2,"0")}`;
+        };
+
+        let transType = amount < 0 ? "REPAY" : "SPEND";
+        if (desc.includes("免年费")) transType = "REFUND";
+
+        trans.push({
+          trans_date: fmt(l), post_date: fmt(postDate),
+          description: desc, amount, card_last4: cardLast4,
+          cardholder: CARDHOLDER_MAP[cardLast4] || bank.defaultCardholder,
+          trans_type: transType,
+        });
+        i += 5; continue;
       }
-      if (amount === null || Math.abs(amount) > 5000000) continue;
 
-      // 描述：日期行后面的中文内容
-      for (let j = i + 1; j < Math.min(i + 5, lines.length); j++) {
-        if (/[\u4e00-\u9fff]/.test(lines[j]) && !lines[j].startsWith("¥") && !/^\d+\.\d+$/.test(lines[j])) {
-          desc = lines[j].replace(/^\d{4}/, "").trim().substring(0, 200);
-          break;
-        }
+      if (section === "repay") {
+        // 还款：MMDD → 描述 → ¥金额 → 卡号 → 交易金额
+        if (i + 4 >= lines.length) continue;
+        const desc = lines[i + 1] || "";
+        const amtLine = lines[i + 2] || "";
+        const amtMatch = amtLine.match(/[¥￥]\s*(-?\d[\d,]*\.?\d*)/);
+        const amount = amtMatch ? parseFloat(amtMatch[1].replace(/,/g, "")) : null;
+        const cardLast4 = lines[i + 3] || "";
+        if (!desc || amount === null || Math.abs(amount) > 5000000) continue;
+
+        const fmt = (d) => {
+          const mo = parseInt(d.slice(0,2)), day = parseInt(d.slice(2,4));
+          let y = year; if (mo > 6) y = year - 1;
+          return `${y}-${String(mo).padStart(2,"0")}-${String(day).padStart(2,"0")}`;
+        };
+
+        trans.push({
+          trans_date: fmt(l), post_date: fmt(l),
+          description: desc, amount, card_last4: cardLast4,
+          cardholder: CARDHOLDER_MAP[cardLast4] || bank.defaultCardholder,
+          trans_type: "REPAY",
+        });
+        i += 4; continue;
       }
-      if (!desc) continue;
-
-      // 年份推断
-      let tY = year;
-      if (tM > 6) tY = year - 1;
-      const td = `${tY}-${String(tM).padStart(2, "0")}-${String(tD).padStart(2, "0")}`;
-
-      // 去重
-      const key = `${td}|${amount}|${desc.substring(0, 30)}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-
-      trans.push({ trans_date: td, post_date: td, description: desc, amount, card_last4: "" });
     }
 
     return {
@@ -94,6 +109,11 @@ const bank = {
         cardLast4: "", cardholder: this.defaultCardholder,
       },
     };
+  },
+
+  _inferYear(html) {
+    const m = html.match(/(\d{4})\/\d{2}\/\d{2}\s*-\s*\d{2}\/\d{2}\/\d{2}/);
+    return m ? parseInt(m[1]) : new Date().getFullYear();
   },
 };
 

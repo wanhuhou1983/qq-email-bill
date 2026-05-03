@@ -38,10 +38,18 @@ const bank = {
       const dates = cells.filter(c => /^\d{4}-\d{2}-\d{2}$/.test(c));
       if (dates.length < 2) continue;
 
-      // 金额: ¥ 10.94 或 ¥ -2.00 (可能用 &yen; 或 ¥)
+      // 卡号后四位（4位数字，非日期）
+      let cardLast4 = "";
+      for (const cell of cells) {
+        if (/^\d{4}$/.test(cell) && !/^\d{4}-\d{2}-\d{2}$/.test(cell)) {
+          cardLast4 = cell; break;
+        }
+      }
+
+      // 金额: ¥ 10.94 或 ¥ -2.00
       let amount = null;
       for (const cell of cells) {
-        const m = cell.match(/[¥￥&yen;]\s*(-?\d[\d,]*\.?\d*)/);
+        const m = cell.match(/(?:[¥￥]|&yen;)\s*(-?\d[\d,]*\.?\d*)/);
         if (m) {
           amount = parseFloat(m[1].replace(/,/g, ""));
           break;
@@ -52,19 +60,21 @@ const bank = {
       // 描述 = 找有中文且非日期/金额的列
       let desc = "";
       for (const cell of cells) {
-        if (/[\u4e00-\u9fff]/.test(cell) && !/^\d{4}-\d{2}-\d{2}$/.test(cell) && !cell.includes("¥") && !cell.includes("&yen;")) {
+        if (/[\u4e00-\u9fff]/.test(cell) && !/^\d{4}-\d{2}-\d{2}$/.test(cell) && !cell.includes("¥") && !cell.includes("&yen;") && !/^\d{4}$/.test(cell)) {
           desc = cell.substring(0, 200);
           break;
         }
       }
       if (!desc) continue;
 
+      // 交易类型
+      const transType = amount > 0 ? "SPEND" : (desc.includes("退款") ? "REFUND" : "REPAY");
+
       trans.push({
-        trans_date: dates[0],
-        post_date: dates[1],
-        description: desc,
-        amount: amount,
-        card_last4: "",
+        trans_date: dates[0], post_date: dates[1],
+        description: desc, amount,
+        card_last4: cardLast4,
+        trans_type: transType,
       });
     }
     return trans;

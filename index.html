@@ -146,22 +146,36 @@
   .tab-bar button:last-child { border-radius:0 8px 8px 0; }
   .tab-bar button.active { background:var(--primary); color:#fff; border-color:var(--primary); }
 
-  /* 账期4x4宫格 */
-  .cycle-grid-wrap { width:100%; }
-  .cy-header { display:flex; align-items:center; justify-content:center; gap:10px; margin-bottom:6px; }
-  .cy-header #cy-year-label { font-size:14px; font-weight:600; color:#333; min-width:40px; text-align:center; }
-  .btn-arrow { background:#f3f4f6; border:1px solid #d1d5db; border-radius:4px; padding:3px 10px; cursor:pointer; font-size:13px; transition:background .15s; }
-  .btn-arrow:hover { background:#e5e7eb; }
-  .cycle-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:3px; }
-  .cycle-grid .cy-cell {
+  /* 账期4x4宫格 - 下拉版 */
+  .cycle-drop-wrap { position:relative; width:100%; }
+  .cycle-drop-trigger {
+    padding:8px 10px; border:1px solid var(--border); border-radius:6px;
+    font-size:13px; cursor:pointer; background:#fff; color:var(--text-secondary);
+    display:flex; align-items:center; justify-content:space-between;
+    transition:border-color .15s;
+  }
+  .cycle-drop-trigger::after { content:'▾'; font-size:10px; color:#999; margin-left:6px; }
+  .cycle-drop-trigger.has-value { color:#333; font-weight:500; }
+  .cycle-drop-panel {
+    display:none; position:absolute; top:calc(100% + 4px); left:0; z-index:100;
+    background:#fff; border:1px solid #e5e7eb; border-radius:8px;
+    box-shadow:0 8px 24px rgba(0,0,0,.12); padding:10px; width:200px;
+  }
+  .cycle-drop-panel.show { display:block; }
+  .cycle-drop-panel .cy-header { display:flex; align-items:center; justify-content:center; gap:10px; margin-bottom:8px; }
+  .cycle-drop-panel #cy-year-label { font-size:14px; font-weight:600; color:#333; min-width:40px; text-align:center; }
+  .cycle-drop-panel .btn-arrow { background:#f3f4f6; border:1px solid #d1d5db; border-radius:4px; padding:3px 10px; cursor:pointer; font-size:13px; line-height:1.4; }
+  .cycle-drop-panel .btn-arrow:hover { background:#e5e7eb; }
+  .cycle-drop-panel .cycle-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:3px; }
+  .cycle-drop-panel .cy-cell {
     padding:5px 2px; text-align:center; font-size:12px; border-radius:4px;
     cursor:pointer; border:1px solid #e5e7eb; background:#f9fafb; color:#9ca3af;
     transition:all .15s;
   }
-  .cycle-grid .cy-cell.has-data { background:#d1fae5; color:#065f46; border-color:#6ee7b7; font-weight:500; cursor:pointer; }
-  .cycle-grid .cy-cell.has-data:hover { background:#a7f3d0; }
-  .cycle-grid .cy-cell.selected { background:var(--primary); color:#fff; border-color:var(--primary); font-weight:600; }
-  .cycle-grid .cy-cell.selected:hover { background:#6d28d9; }
+  .cycle-drop-panel .cy-cell.has-data { background:#d1fae5; color:#065f46; border-color:#6ee7b7; font-weight:500; cursor:pointer; }
+  .cycle-drop-panel .cy-cell.has-data:hover { background:#a7f3d0; }
+  .cycle-drop-panel .cy-cell.selected { background:var(--primary); color:#fff; border-color:var(--primary); font-weight:600; }
+  .cycle-drop-panel .cy-cell.selected:hover { background:#6d28d9; }
 
   /* 日期箭头 */
   .date-arrow-wrap { display:flex; align-items:center; gap:4px; }
@@ -238,13 +252,16 @@
       </div>
       <div class="form-group">
         <label>账期</label>
-        <div class="cycle-grid-wrap">
-          <div class="cy-header">
-            <button class="btn btn-arrow" onclick="shiftCycleYear(-1)">‹</button>
-            <span id="cy-year-label">2026</span>
-            <button class="btn btn-arrow" onclick="shiftCycleYear(1)">›</button>
+        <div class="cycle-drop-wrap">
+          <div class="cycle-drop-trigger" id="f-cycle-trigger" onclick="toggleCycleDropdown()">----</div>
+          <div class="cycle-drop-panel" id="f-cycle-panel">
+            <div class="cy-header">
+              <button class="btn-arrow" onclick="shiftCycleYear(-1)">‹</button>
+              <span id="cy-year-label">2026</span>
+              <button class="btn-arrow" onclick="shiftCycleYear(1)">›</button>
+            </div>
+            <div class="cycle-grid" id="f-cycle-grid"></div>
           </div>
-          <div class="cycle-grid" id="f-cycle-grid"></div>
           <input type="hidden" id="f-cycle" value="">
         </div>
       </div>
@@ -441,12 +458,14 @@ function resetFilters() {
   document.querySelectorAll('#f-min-amt,#f-max-amt,#f-start,#f-end').forEach(e => e.value = '');
   document.getElementById('f-cycle').value = '';
   document.querySelectorAll('#f-cycle-grid .cy-cell').forEach(el => el.classList.remove('selected'));
+  var t = document.getElementById('f-cycle-trigger');
+  if (t) { t.textContent = '----'; t.classList.remove('has-value'); }
   isAiMode = false;
   refreshCycles();
   doSearch(0);
 }
 
-// ============ 账期4x4宫格 ============
+// ============ 账期4x4下拉宫格 ============
 let _cycleYear = new Date().getFullYear();
 let _cyclesAvailable = [];
 
@@ -473,6 +492,11 @@ function renderCycleGrid() {
   }).join('');
 }
 
+function toggleCycleDropdown() {
+  const panel = document.getElementById('f-cycle-panel');
+  panel.classList.toggle('show');
+}
+
 function shiftCycleYear(delta) {
   _cycleYear += delta;
   renderCycleGrid();
@@ -481,9 +505,21 @@ function shiftCycleYear(delta) {
 function selectCycleGrid(el) {
   document.querySelectorAll('#f-cycle-grid .cy-cell').forEach(e => e.classList.remove('selected'));
   el.classList.add('selected');
-  document.getElementById('f-cycle').value = el.dataset.ym;
+  const ym = el.dataset.ym;
+  document.getElementById('f-cycle').value = ym;
+  const trigger = document.getElementById('f-cycle-trigger');
+  trigger.textContent = ym.replace('-', '');
+  trigger.classList.add('has-value');
+  document.getElementById('f-cycle-panel').classList.remove('show');
   doSearch(0);
 }
+
+// 点击外面关闭
+document.addEventListener('click', function(e) {
+  if (!e.target.closest('.cycle-drop-wrap')) {
+    document.getElementById('f-cycle-panel').classList.remove('show');
+  }
+});
 
 async function refreshCycles() {
   const holder = document.getElementById('f-cardholder').value;

@@ -289,8 +289,23 @@ def bill_cycles(cardholder: Optional[str] = Query(None), bank_code: Optional[str
     where = " ".join(conditions)
     conn = get_conn(); cur = conn.cursor()
     try:
+        # 先从 bill 表获取
         cur.execute(f"SELECT DISTINCT b.bill_cycle FROM credit_card_bills b WHERE b.bill_cycle != '' {where} ORDER BY b.bill_cycle", values)
-        return {"cycles": [row[0] for row in cur.fetchall()]}
+        cycles = [row[0] for row in cur.fetchall()]
+
+        # 如果 bill_cycle 数据不足，从交易日期生成虚拟账期
+        if not cycles:
+            tx_conditions = []; tx_values = []
+            if cardholder:
+                tx_conditions.append("AND cardholder = %s"); tx_values.append(cardholder)
+            if bank_code:
+                tx_conditions.append("AND bank_code = %s"); tx_values.append(bank_code)
+            tx_where = " ".join(tx_conditions)
+            cur.execute(f"""SELECT DISTINCT to_char(trans_date, 'YYYY-MM') FROM credit_card_transactions 
+                           WHERE 1=1 {tx_where} ORDER BY 1""", tx_values)
+            cycles = [row[0] for row in cur.fetchall()]
+
+        return {"cycles": cycles}
     finally:
         cur.close(); conn.close()
 

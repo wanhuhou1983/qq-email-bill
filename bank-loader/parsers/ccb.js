@@ -8,6 +8,13 @@
  */
 "use strict";
 
+// 卡号→持卡人映射
+const CARDHOLDER_MAP = {
+  "6258": "赵健伟",
+  "1855": "吴大军",
+  "5099": "钱伟琴",
+};
+
 const bank = {
   code: "CCB",
   name: "建设银行",
@@ -33,7 +40,6 @@ const bank = {
       .trim();
 
     const trans = [];
-    const seen = new Set();
 
     // 交易明细区
     const idx = text.search(/交易明细/);
@@ -42,7 +48,7 @@ const bank = {
 
     // 格式: YYYY-MM-DD YYYY-MM-DD 4位数字 描述 CNY 金额 CNY 金额
     // 金额可以带负号: -6,901.82
-    const rowRe = /(\d{4}-\d{2}-\d{2})\s+(\d{4}-\d{2}-\d{2})\s+(\d{4})\s+([^0-9]+?)\s+CNY\s+(-?\d[\d,]*\.?\d*)\s+CNY\s+(-?\d[\d,]*\.?\d*)/g;
+    const rowRe = /(\d{4}-\d{2}-\d{2})\s+(\d{4}-\d{2}-\d{2})\s+(\d{4})\s+(.+?)\s+CNY\s+(-?\d[\d,]*\.?\d*)\s+CNY\s+(-?\d[\d,]*\.?\d*)/g;
     let m;
 
     while ((m = rowRe.exec(section)) !== null) {
@@ -50,20 +56,23 @@ const bank = {
       const postDate = m[2];
       const cardLast4 = m[3];
       const desc = m[4].trim().replace(/\s+/g, "").substring(0, 200);
-      const amount = parseFloat(m[5].replace(/,/g, ""));
+      const amount = parseFloat(m[6].replace(/,/g, "")); // 用第二个CNY金额（结算金额）
 
       if (!desc || Math.abs(amount) > 5000000) continue;
 
-      const key = `${transDate}|${amount}|${desc}|${cardLast4}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
+      // 交易类型
+      let transType = "SPEND";
+      if (amount < 0) {
+        if (desc.includes("还款") || desc.includes("入账")) transType = "REPAY";
+        else if (desc.includes("退款") || desc.includes("退货")) transType = "REFUND";
+        else transType = "REPAY";
+      }
 
       trans.push({
-        trans_date: transDate,
-        post_date: postDate,
-        description: desc,
-        amount: amount,
-        card_last4: cardLast4,
+        trans_date: transDate, post_date: postDate,
+        description: desc, amount, card_last4: cardLast4,
+        cardholder: CARDHOLDER_MAP[cardLast4] || bank.defaultCardholder,
+        trans_type: transType,
       });
     }
 

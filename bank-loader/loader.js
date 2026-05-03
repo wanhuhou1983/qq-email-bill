@@ -89,7 +89,7 @@ const decoders = {
 
     // 检测编码：找 text/html 附近的 Content-Transfer-Encoding
     const htmlIdx = raw.search(/Content-Type:\s*text\/html/i);
-    const nearHtml = htmlIdx >= 0 ? raw.substring(htmlIdx, Math.min(raw.length, htmlIdx + 500)) : raw;
+    const nearHtml = htmlIdx >= 0 ? raw.substring(Math.max(0, htmlIdx - 300), Math.min(raw.length, htmlIdx + 500)) : raw;
     const cte = (nearHtml.match(/Content-Transfer-Encoding:\s*(\S+)/i) || [])[1]?.toLowerCase();
     const isQP = cte === "quoted-printable";
     const isB64 = cte === "base64";
@@ -121,8 +121,8 @@ const decoders = {
       if (result) return result;
     }
 
-    // fallback: 直接取 text/html 后内容试试
-    const rawBody = nearHtml.match(/\r?\n\r?\n([\s\S]*?)$/);
+    // fallback: 从Content-Type后直接取所有QP内容
+    const rawBody = nearHtml.match(/\r?\n\r?\n([\s\S]*)$/);
     if (rawBody) {
       const cleaned = rawBody[1].replace(/=\r?\n/g, "");
       if (/=[0-9A-Fa-f]{2}/.test(cleaned)) {
@@ -191,8 +191,9 @@ const PG = {
   /** 批量插入交易明细（去重） */
   async insertTransactions(billId, bank, transactions) {
     let inserted = 0;
-    for (const t of transactions) {
-      const tt = this._detectType(t.amount, t.description);
+    for (let i = 0; i < transactions.length; i++) {
+      const t = transactions[i];
+      const tt = t.trans_type || this._detectType(t.amount, t.description);
       try {
         const r = await this.query(
           `INSERT INTO credit_card_transactions
@@ -200,14 +201,14 @@ const PG = {
             trans_date, post_date, description, category,
             amount, currency, trans_type, is_installment, source, raw_line_text)
            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,'email',$15)
-           ON CONFLICT (bank_code, trans_date, post_date, card_last4, description, amount) DO NOTHING`,
+           ON CONFLICT ON CONSTRAINT uq_txn DO NOTHING`,
           [
             billId, bank.code, t.cardholder || bank.defaultCardholder,
             t.card_last4 || bank.defaultCardLast4, "",
             `****${t.card_last4 || bank.defaultCardLast4}`,
             t.trans_date, t.post_date, t.description, "",
             t.amount, "CNY", tt, false,
-            `${t.trans_date}|${t.amount}|${t.description}`,
+            `${t.trans_date}|${t.amount}|${t.description}|${i}`,
           ]
         );
         if (r.rowCount > 0) inserted++;

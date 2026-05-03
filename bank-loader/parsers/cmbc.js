@@ -36,7 +36,6 @@ const bank = {
 
   _parseTransactions(html, year, billCycle) {
     const trans = [];
-    const seen = new Set();
 
     // 提取纯文本
     const text = html
@@ -47,8 +46,8 @@ const bank = {
       .replace(/\s+/g, " ")
       .trim();
 
-    // 截取交易明细区（从"交易明细"到"END"或"账单说明"）
-    const start = text.search(/交易明细/);
+    // 截取交易明细区（从"交易日"或"交易明细"到"END"或"账单说明"）
+    const start = text.search(/交易(?:明细|日\s+?SOLD)/);
     if (start < 0) return trans;
     const end = text.search(/-+END-+|账单说明|温馨提示|历史交易/);
     const section = end > start ? text.substring(start, end) : text.substring(start);
@@ -56,7 +55,7 @@ const bank = {
     // 提取所有行: MM/DD MM/DD 描述 金额 卡号末4
     // 金额可能为负（-731.64）或正（0.01）
     // 描述不能包含 MM/DD 模式，用 (?:(?!\d{1,2}/\d{1,2}).)* 来确保
-    const rowRe = /(\d{1,2})\/(\d{1,2})\s+(\d{1,2})\/(\d{1,2})\s+([^\d]+?)\s+(-?\d[\d,]*\.?\d*)\s+(\d{4})/g;
+    const rowRe = /(\d{1,2})\/(\d{1,2})\s+(\d{1,2})\/(\d{1,2})\s+(.+?)\s+(-?\d[\d,]*\.?\d*)\s+(\d{4})/g;
     let m;
 
     // 将当前账单的月份作为基准判断年份
@@ -83,9 +82,11 @@ const bank = {
       const transDate = `${txYear}-${String(transMo).padStart(2, "0")}-${String(transDa).padStart(2, "0")}`;
       const postDate = `${postYear}-${String(postMo).padStart(2, "0")}-${String(postDa).padStart(2, "0")}`;
 
-      const key = `${transDate}|${amount}|${desc}|${cardLast4}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
+      // 交易类型：正数=消费，负数=还款/退款
+      let transType = "SPEND";
+      if (amount < 0) {
+        transType = desc.includes("退款") || desc.includes("退货") ? "REFUND" : "REPAY";
+      }
 
       trans.push({
         trans_date: transDate,
@@ -93,6 +94,7 @@ const bank = {
         description: desc,
         amount: amount,
         card_last4: cardLast4,
+        trans_type: transType,
       });
     }
 

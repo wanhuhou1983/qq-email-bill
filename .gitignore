@@ -24,3 +24,8 @@ fastapi.pid
 
 # Samples (moved to samples/)
 samples/
+*.txt
+*.pyc
+__pycache__/
+node_modules/
+app.log

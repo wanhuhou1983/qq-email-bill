@@ -3,8 +3,9 @@
  *
  * 编码: QP + GBK
  * 日期: YYYYMMDD（8位无分隔符）
- * 格式: YYYYMMDD YYYYMMDD 卡号 描述 CNY 金额 CNY 金额
+ * 格式: YYYYMMDD YYYYMMDD 卡号 描述 CNY trxAmt CNY setlAmt
  * 卡号: 1696, 持卡人: 吴华辉
+ * 注意：交易明细在"主卡"到"【温馨提示】"之间，纯文本行格式
  */
 "use strict";
 
@@ -15,13 +16,13 @@ const bank = {
   parse(html, envelope) {
     const text = html.replace(/<[^>]+>/g," ").replace(/&nbsp;/g," ").replace(/&amp;/g,"&").replace(/[\t\r\n]/g," ").replace(/\s+/g," ").trim();
     const trans = [];
-    const seen = new Set();
 
     const start = text.search(/主卡/);
-    const section = start >= 0 ? text.substring(start) : text;
+    const end = text.search(/【温馨提示】/);
+    const section = start >= 0 ? (end > start ? text.substring(start, end) : text.substring(start)) : text;
 
-    // YYYYMMDD YYYYMMDD 4位卡号 + 描述 + CNY + 金额...
-    const rowRe = /(\d{4})(\d{2})(\d{2})\s+(\d{4})(\d{2})(\d{2})\s+(\d{4})\s+([^0-9]+?)\s+CNY\s+(-?\d[\d,]*\.?\d*)/g;
+    // YYYYMMDD YYYYMMDD 4位卡号 描述 CNY trxAmt CNY setlAmt
+    const rowRe = /(\d{4})(\d{2})(\d{2})\s+(\d{4})(\d{2})(\d{2})\s+(\d{4})\s+(.+?)\s+CNY\s+(-?\d[\d,]*\.?\d*)\s+CNY\s+(-?\d[\d,]*\.?\d*)/g;
     let m;
 
     while ((m = rowRe.exec(section)) !== null) {
@@ -29,13 +30,22 @@ const bank = {
       const pd = `${m[4]}-${m[5]}-${m[6]}`;
       const card = m[7];
       const desc = m[8].replace(/\s+/g,"").substring(0,200);
-      const amount = parseFloat(m[9].replace(/,/g,""));
+      const amount = parseFloat(m[10].replace(/,/g,"")); // 记账金额 Setl.Amt
 
       if (!desc || isNaN(amount) || Math.abs(amount) > 5000000) continue;
-      const key = `${td}|${amount}|${desc.substring(0,30)}`;
-      if (seen.has(key)) continue; seen.add(key);
 
-      trans.push({ trans_date:td, post_date:pd, description:desc, amount, card_last4:card });
+      // 交易类型：正=消费，负=还款/入账
+      let transType = "SPEND";
+      if (amount < 0) {
+        if (desc.includes("还款")) transType = "REPAY";
+        else if (desc.includes("返") || desc.includes("退款")) transType = "REFUND";
+        else transType = "REPAY"; // 银联入账等还款
+      }
+
+      trans.push({
+        trans_date: td, post_date: pd, description: desc,
+        amount, card_last4: card, trans_type: transType,
+      });
     }
 
     return {
