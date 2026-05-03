@@ -68,8 +68,8 @@ def validate_ai_sql(raw: str) -> str:
 
 @router.get("/search", response_model=SearchResult)
 def search(
-    page: int = Query(0, ge=0),
-    size: int = Query(20, ge=0, le=200),
+    limit: int = Query(50, ge=0, le=200),
+    offset: int = Query(0, ge=0),
     bank_code: Optional[str] = Query(None, alias="bank_code"),
     cardholder: Optional[str] = Query(None),
     min_amount: Optional[float] = Query(None),
@@ -85,7 +85,7 @@ def search(
     description: Optional[str] = Query(None),
     bill_id: Optional[int] = Query(None),
 ):
-    params = {k: v for k, v in locals().items() if k not in ("self", "page", "size") and v is not None}
+    params = {k: v for k, v in locals().items() if k not in ("self", "limit", "offset") and v is not None}
     where_sql, values = build_where_clause(params)
 
     conn = get_conn(); cur = conn.cursor()
@@ -99,11 +99,10 @@ def search(
         cur.execute(f"SELECT COUNT(*) FROM credit_card_transactions t WHERE 1=1 {where_sql}", values)
         total = cur.fetchone()[0]
 
-        # size=0 时只返回聚合值，不查询交易明细
-        if size == 0:
+        # limit=0 时只返回聚合值，不查询交易明细
+        if limit == 0:
             return SearchResult(total=total, sum_spend=sum_spend, sum_repay=sum_repay, transactions=[])
 
-        offset = page * size
         cur.execute(f"""
             SELECT t.id, t.bill_id, t.bank_code, COALESCE(b.bank_name, '') as bank_name,
                    t.cardholder, t.card_last4, COALESCE(t.card_type, '') as card_type,
@@ -114,7 +113,7 @@ def search(
             LEFT JOIN credit_card_bills b ON t.bill_id = b.id
             WHERE 1=1 {where_sql}
             ORDER BY t.trans_date DESC, t.id DESC LIMIT %s OFFSET %s
-        """, values + [size, offset])
+        """, values + [limit, offset])
         cols = [desc[0] for desc in cur.description]
         return SearchResult(total=total, sum_spend=sum_spend, sum_repay=sum_repay,
                             transactions=[row_to_dict(r, cols) for r in cur.fetchall()])

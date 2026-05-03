@@ -414,7 +414,7 @@ async function loadMeta() {
     document.getElementById('f-bank').addEventListener('change', refreshCycles);
 
     // Stats - 直接取后台聚合值
-    const stats = await api('/api/search?size=0');
+    const stats = await api('/api/search?limit=0');
     const total = stats.total;
     const spendSum = stats.sum_spend || 0;
     const repaySum = stats.sum_repay || 0;
