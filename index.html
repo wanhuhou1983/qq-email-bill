@@ -370,7 +370,7 @@ let currentBankForCards = '';            // 当前选中银行（用于卡号列
 const BANK_NAMES = {
   ABC: '农行', BOCOM: '交行', CCB: '建行', CGB: '广发',
   CITIC: '中信', CMB: '招行', ICBC: '工行', PAB: '平安',
-  CEB: '光大', CMBC: '民生', CZB: '浙商', BOC: '中行'
+  CEB: '光大', CMBC: '民生', CZB: '浙商', BOC: '中行', NBC: '宁波'
 };
 
 const TYPE_NAMES = {
@@ -478,7 +478,7 @@ function renderBillList() {
   const BANK_COLORS = {
     'ABC':'#059669','BOCOM':'#2563eb','CCB':'#dc2626','CEB':'#d97706',
     'CGB':'#7c3aed','CITIC':'#0891b2','CMB':'#db2777','CMBC':'#ca8a04',
-    'CZB':'#0d9488','ICBC':'#1d4ed8','PAB':'#9333ea','BOC':'#be185d','SPDB':'#1e40af',
+    'CZB':'#0d9488','ICBC':'#1d4ed8','PAB':'#9333ea','BOC':'#be185d','SPDB':'#1e40af','NBC':'#e11d48',
   };
 
   list.innerHTML = Object.entries(groups).map(([bk, bills]) => {
@@ -766,7 +766,7 @@ function bankColor(code) {
   const colors = {
     ABC:'#1a7f37', BOCOM:'#0066cc', CCB:'#003087', CGB:'#c8102e',
     CITIC:'#e5333a', CMB:'#c00000', ICBC:'#cf2027', PAB:'#f5a623',
-    CEB:'#ff6600', CMBC:'#0071bb', CZB:'#003087', BOC:'#c00000'
+    CEB:'#ff6600', CMBC:'#0071bb', CZB:'#003087', BOC:'#c00000', NBC:'#e11d48'
   };
   return colors[code] || '#666';
 }

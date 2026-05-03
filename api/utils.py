@@ -8,7 +8,7 @@ BANK_NAMES = {
     "ABC": "农业银行", "BOCOM": "交通银行", "CCB": "建设银行", "CGB": "广发银行",
     "CITIC": "中信银行", "CMB": "招商银行", "ICBC": "工商银行", "PAB": "平安银行",
     "CEB": "光大银行", "CMBC": "民生银行", "CZB": "浙商银行", "BOC": "中国银行",
-    "SPDB": "浦发",
+    "SPDB": "浦发", "NBC": "宁波银行",
 }
 
 def row_to_dict(row, cols) -> dict:
