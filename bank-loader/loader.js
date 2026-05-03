@@ -379,6 +379,18 @@ async function importBank(bank) {
     const inserted = await PG.insertTransactions(billId, bank, result.transactions);
     totalInserted += inserted;
     console.log(`  ✅ 新增 ${inserted} 条\n`);
+
+    // 修正账单持卡人：如果交易中最多的cardholder和账单头不一致，更新账单头
+    const holderCounts = {};
+    for (const t of result.transactions) {
+      const h = t.cardholder || bank.defaultCardholder;
+      holderCounts[h] = (holderCounts[h] || 0) + 1;
+    }
+    const topHolder = Object.entries(holderCounts).sort((a, b) => b[1] - a[1])[0];
+    if (topHolder && topHolder[0] !== (bill.cardholder || bank.defaultCardholder)) {
+      await PG.query("UPDATE credit_card_bills SET cardholder=$1 WHERE id=$2", [topHolder[0], billId]);
+      console.log(`  👤 账单持卡人修正: ${bill.cardholder || bank.defaultCardholder} → ${topHolder[0]}`);
+    }
   }
 
   await imap.logout();

@@ -283,22 +283,40 @@ def debit_banks():
 @router.get("/bill-cycles")
 def bill_cycles(cardholder: Optional[str] = Query(None), bank_code: Optional[str] = Query(None),
                 bank: Optional[str] = Query(None)):
-    conditions = []; values = []
     bc = bank_code or bank
-    if cardholder:
-        conditions.append("AND b.cardholder = %s"); values.append(cardholder)
-    if bc:
-        conditions.append("AND b.bank_code = %s"); values.append(bc)
-    where = " ".join(conditions)
     conn = get_conn(); cur = conn.cursor()
     try:
-        cur.execute(f"""
-            SELECT b.id, b.bank_code, COALESCE(b.bank_name, ''), b.cardholder,
-                   b.account_masked, b.cycle_start, b.cycle_end, b.bill_cycle, b.bill_date
-            FROM credit_card_bills b
-            WHERE 1=1 {where}
-            ORDER BY COALESCE(b.cycle_start, b.bill_date, '1900-01-01') DESC, b.bank_code, b.id
-        """, values)
+        # 如果指定了持卡人，从交易表找到该持卡人涉及的所有账单
+        if cardholder:
+            tx_conds = []; tx_vals = []
+            tx_conds.append("AND t.cardholder = %s"); tx_vals.append(cardholder)
+            if bc:
+                tx_conds.append("AND t.bank_code = %s"); tx_vals.append(bc)
+            tx_where = " ".join(tx_conds)
+            cur.execute(f"SELECT DISTINCT t.bill_id FROM credit_card_transactions t WHERE 1=1 {tx_where}", tx_vals)
+            bill_ids = [row[0] for row in cur.fetchall()]
+            if not bill_ids:
+                return {"bills": [], "cycles": []}
+            placeholders = ",".join(str(x) for x in bill_ids)
+            cur.execute(f"""
+                SELECT b.id, b.bank_code, COALESCE(b.bank_name, ''), b.cardholder,
+                       b.account_masked, b.cycle_start, b.cycle_end, b.bill_cycle, b.bill_date
+                FROM credit_card_bills b
+                WHERE b.id IN ({placeholders})
+                ORDER BY COALESCE(b.cycle_start, b.bill_date, '1900-01-01') DESC
+            """)
+        else:
+            conds = []; vals = []
+            if bc:
+                conds.append("AND b.bank_code = %s"); vals.append(bc)
+            where = " ".join(conds)
+            cur.execute(f"""
+                SELECT b.id, b.bank_code, COALESCE(b.bank_name, ''), b.cardholder,
+                       b.account_masked, b.cycle_start, b.cycle_end, b.bill_cycle, b.bill_date
+                FROM credit_card_bills b
+                WHERE 1=1 {where}
+                ORDER BY COALESCE(b.cycle_start, b.bill_date, '1900-01-01') DESC, b.bank_code, b.id
+            """, vals)
 
         bills = []
         for row in cur.fetchall():
@@ -317,22 +335,6 @@ def bill_cycles(cardholder: Optional[str] = Query(None), bank_code: Optional[str
                 "bill_cycle": row[7],
                 "bill_date": row[8],
             })
-
-        # 如果没有cycle_start的bills，回退到旧版月份列表
-        if not bills:
-            cur.execute(f"SELECT DISTINCT b.bill_cycle FROM credit_card_bills b WHERE b.bill_cycle != '' {where} ORDER BY b.bill_cycle", values)
-            cycles = [row[0] for row in cur.fetchall()]
-            if not cycles:
-                tx_conditions = []; tx_values = []
-                if cardholder:
-                    tx_conditions.append("AND t.cardholder = %s"); tx_values.append(cardholder)
-                if bc:
-                    tx_conditions.append("AND t.bank_code = %s"); tx_values.append(bc)
-                tx_where = " ".join(tx_conditions)
-                cur.execute(f"""SELECT DISTINCT to_char(t.trans_date, 'YYYY-MM') FROM credit_card_transactions t
-                               WHERE 1=1 {tx_where} ORDER BY 1""", tx_values)
-                cycles = [row[0] for row in cur.fetchall()]
-            return {"bills": [], "cycles": cycles}
 
         return {"bills": bills, "cycles": []}
     finally:
