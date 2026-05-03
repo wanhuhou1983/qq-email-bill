@@ -145,6 +145,27 @@
   .tab-bar button:first-child { border-radius:8px 0 0 8px; }
   .tab-bar button:last-child { border-radius:0 8px 8px 0; }
   .tab-bar button.active { background:var(--primary); color:#fff; border-color:var(--primary); }
+
+  /* 账期4x4宫格 */
+  .cycle-grid-wrap { width:100%; }
+  .cy-header { display:flex; align-items:center; justify-content:center; gap:10px; margin-bottom:6px; }
+  .cy-header #cy-year-label { font-size:14px; font-weight:600; color:#333; min-width:40px; text-align:center; }
+  .btn-arrow { background:#f3f4f6; border:1px solid #d1d5db; border-radius:4px; padding:3px 10px; cursor:pointer; font-size:13px; transition:background .15s; }
+  .btn-arrow:hover { background:#e5e7eb; }
+  .cycle-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:3px; }
+  .cycle-grid .cy-cell {
+    padding:5px 2px; text-align:center; font-size:12px; border-radius:4px;
+    cursor:pointer; border:1px solid #e5e7eb; background:#f9fafb; color:#9ca3af;
+    transition:all .15s;
+  }
+  .cycle-grid .cy-cell.has-data { background:#d1fae5; color:#065f46; border-color:#6ee7b7; font-weight:500; cursor:pointer; }
+  .cycle-grid .cy-cell.has-data:hover { background:#a7f3d0; }
+  .cycle-grid .cy-cell.selected { background:var(--primary); color:#fff; border-color:var(--primary); font-weight:600; }
+  .cycle-grid .cy-cell.selected:hover { background:#6d28d9; }
+
+  /* 日期箭头 */
+  .date-arrow-wrap { display:flex; align-items:center; gap:4px; }
+  .date-arrow-wrap input[type=date] { flex:1; padding:8px 10px; border:1px solid var(--border); border-radius:6px; font-size:13px; }
 </style>
 </head>
 <body>
@@ -202,6 +223,7 @@
   <div class="panel">
     <div class="panel-title">🔍 条件筛选</div>
     <div class="search-grid">
+      <!-- 第一行: 持卡人 / 银行 / 账期 -->
       <div class="form-group">
         <label>持卡人</label>
         <select id="f-cardholder">
@@ -214,6 +236,20 @@
           <option value="">全部</option>
         </select>
       </div>
+      <div class="form-group">
+        <label>账期</label>
+        <div class="cycle-grid-wrap">
+          <div class="cy-header">
+            <button class="btn btn-arrow" onclick="shiftCycleYear(-1)">‹</button>
+            <span id="cy-year-label">2026</span>
+            <button class="btn btn-arrow" onclick="shiftCycleYear(1)">›</button>
+          </div>
+          <div class="cycle-grid" id="f-cycle-grid"></div>
+          <input type="hidden" id="f-cycle" value="">
+        </div>
+      </div>
+
+      <!-- 第二行: 交易类型 / 币种 -->
       <div class="form-group">
         <label>交易类型</label>
         <select id="f-type">
@@ -237,6 +273,8 @@
           <option value="">全部</option>
         </select>
       </div>
+
+      <!-- 第三行: 最小金额 / 最大金额 -->
       <div class="form-group">
         <label>最小金额（元）</label>
         <input type="number" id="f-min-amt" placeholder="如 0">
@@ -245,22 +283,22 @@
         <label>最大金额（元）</label>
         <input type="number" id="f-max-amt" placeholder="如 5000">
       </div>
+
+      <!-- 第四行: 开始日期 / 结束日期 -->
       <div class="form-group">
         <label>开始日期</label>
-        <input type="date" id="f-start">
+        <div class="date-arrow-wrap">
+          <button class="btn btn-arrow" onclick="shiftDate('f-start', -1)">‹</button>
+          <input type="date" id="f-start">
+          <button class="btn btn-arrow" onclick="shiftDate('f-start', 1)">›</button>
+        </div>
       </div>
       <div class="form-group">
         <label>结束日期</label>
-        <input type="date" id="f-end">
-      </div>
-      <div class="form-group">
-        <label>账期</label>
-        <div class="cycle-wrap">
-          <div class="cycle-trigger" id="f-cycle-trigger" onclick="toggleCycleList()">----</div>
-          <div class="cycle-dropdown" id="f-cycle-dropdown">
-            <div id="f-cycle-list"></div>
-          </div>
-          <input type="hidden" id="f-cycle" value="">
+        <div class="date-arrow-wrap">
+          <button class="btn btn-arrow" onclick="shiftDate('f-end', -1)">‹</button>
+          <input type="date" id="f-end">
+          <button class="btn btn-arrow" onclick="shiftDate('f-end', 1)">›</button>
         </div>
       </div>
     </div>
@@ -365,6 +403,7 @@ async function loadMeta() {
 
     // 持卡人变更时刷新银行选项
     document.getElementById('f-cardholder').addEventListener('change', updateBankOptions);
+    document.getElementById('f-bank').addEventListener('change', refreshCycles);
 
     // Stats - 直接取后台聚合值
     const stats = await api('/api/search?size=0');
@@ -384,7 +423,8 @@ async function loadMeta() {
     `;
 
     // 初始化账期滚动选择器
-    initCyclePicker();
+    initCycleGrid();
+    refreshCycles();
 
     // 默认查询
     doSearch(0);
@@ -400,60 +440,74 @@ function resetFilters() {
   document.querySelectorAll('#f-cardholder,#f-bank,#f-type,#f-currency').forEach(e => e.value = '');
   document.querySelectorAll('#f-min-amt,#f-max-amt,#f-start,#f-end').forEach(e => e.value = '');
   document.getElementById('f-cycle').value = '';
-  document.querySelectorAll('#f-cycle-list .cy-item').forEach(el => el.classList.remove('active'));
-  const trigger = document.getElementById('f-cycle-trigger');
-  trigger.textContent = '----';
-  trigger.classList.remove('has-value');
+  document.querySelectorAll('#f-cycle-grid .cy-cell').forEach(el => el.classList.remove('selected'));
   isAiMode = false;
+  refreshCycles();
   doSearch(0);
 }
 
-// ============ 账期下拉选择器 ============
-function initCyclePicker() {
-  const list = document.getElementById('f-cycle-list');
-  const now = new Date();
-  const items = [];
-  for (let i = -24; i <= 24; i++) {
-    const d = new Date(now.getFullYear(), now.getMonth() + i, 1);
-    const ym = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
-    items.push(ym);
-  }
-  list.innerHTML = items.map(ym =>
-    `<div class="cy-item" data-ym="${ym}" onclick="selectCycle(this)">${ym.replace('-', '')}</div>`
-  ).join('');
+// ============ 账期4x4宫格 ============
+let _cycleYear = new Date().getFullYear();
+let _cyclesAvailable = [];
+
+function initCycleGrid() {
+  _cycleYear = new Date().getFullYear();
+  renderCycleGrid();
 }
 
-function toggleCycleList() {
-  const dd = document.getElementById('f-cycle-dropdown');
-  const trigger = document.getElementById('f-cycle-trigger');
-  dd.classList.toggle('show');
-  trigger.classList.toggle('active', dd.classList.contains('show'));
-  if (dd.classList.contains('show')) {
-    // 滚动到已选项或当前月
-    const active = document.querySelector('#f-cycle-list .cy-item.active');
-    if (active) active.scrollIntoView({ block: 'center' });
-  }
+function renderCycleGrid() {
+  const grid = document.getElementById('f-cycle-grid');
+  const label = document.getElementById('cy-year-label');
+  label.textContent = _cycleYear;
+  const selected = document.getElementById('f-cycle').value;
+  const months = [1,2,3,4,5,6,7,8,9,10,11,12];
+
+  grid.innerHTML = months.map(m => {
+    const ym = _cycleYear + '-' + String(m).padStart(2, '0');
+    const hasData = _cyclesAvailable.indexOf(ym) >= 0;
+    const isSelected = selected === ym;
+    const cls = isSelected ? 'cy-cell selected'
+      : hasData ? 'cy-cell has-data'
+      : 'cy-cell';
+    return `<div class="${cls}" data-ym="${ym}" onclick="selectCycleGrid(this)" title="${ym}">${String(m).padStart(2,'0')}</div>`;
+  }).join('');
 }
 
-function selectCycle(el) {
-  document.querySelectorAll('#f-cycle-list .cy-item').forEach(e => e.classList.remove('active'));
-  el.classList.add('active');
+function shiftCycleYear(delta) {
+  _cycleYear += delta;
+  renderCycleGrid();
+}
+
+function selectCycleGrid(el) {
+  document.querySelectorAll('#f-cycle-grid .cy-cell').forEach(e => e.classList.remove('selected'));
+  el.classList.add('selected');
   document.getElementById('f-cycle').value = el.dataset.ym;
-  const trigger = document.getElementById('f-cycle-trigger');
-  trigger.textContent = el.dataset.ym.replace('-', '');
-  trigger.classList.add('has-value');
-  document.getElementById('f-cycle-dropdown').classList.remove('show');
-  trigger.classList.remove('active');
   doSearch(0);
 }
 
-// 点击外面关闭下拉
-document.addEventListener('click', function(e) {
-  if (!e.target.closest('.cycle-wrap')) {
-    document.getElementById('f-cycle-dropdown').classList.remove('show');
-    document.getElementById('f-cycle-trigger').classList.remove('active');
+async function refreshCycles() {
+  const holder = document.getElementById('f-cardholder').value;
+  const bank = document.getElementById('f-bank').value;
+  const params = new URLSearchParams();
+  if (holder) params.set('cardholder', holder);
+  if (bank) params.set('bank_code', bank);
+  try {
+    const data = await api('/api/bill-cycles?' + params.toString());
+    _cyclesAvailable = data.cycles || [];
+  } catch(e) {
+    _cyclesAvailable = [];
   }
-});
+  renderCycleGrid();
+}
+
+// ============ 日期箭头 ============
+function shiftDate(id, days) {
+  const el = document.getElementById(id);
+  let d = el.value ? new Date(el.value + 'T00:00:00') : new Date();
+  d.setDate(d.getDate() + days);
+  el.value = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+  if (document.activeElement !== el) doSearch(0);
+}
 
 function updateBankOptions() {
   const holder = document.getElementById('f-cardholder').value;
@@ -469,6 +523,7 @@ function updateBankOptions() {
     }
   }
   fillSelect('f-bank', opts);
+  refreshCycles();  // 筛选条件变化时刷新账期
 }
 
 // ============ 卡号筛选 ============

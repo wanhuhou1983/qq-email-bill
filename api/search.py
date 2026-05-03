@@ -278,3 +278,19 @@ def debit_banks():
     finally:
         cur.close(); conn.close()
 
+
+@router.get("/bill-cycles")
+def bill_cycles(cardholder: Optional[str] = Query(None), bank_code: Optional[str] = Query(None)):
+    conditions = []; values = []
+    if cardholder:
+        conditions.append("AND b.cardholder = %s"); values.append(cardholder)
+    if bank_code:
+        conditions.append("AND b.bank_code = %s"); values.append(bank_code)
+    where = " ".join(conditions)
+    conn = get_conn(); cur = conn.cursor()
+    try:
+        cur.execute(f"SELECT DISTINCT b.bill_cycle FROM credit_card_bills b WHERE b.bill_cycle != '' {where} ORDER BY b.bill_cycle", values)
+        return {"cycles": [row[0] for row in cur.fetchall()]}
+    finally:
+        cur.close(); conn.close()
+
