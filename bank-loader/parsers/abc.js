@@ -56,10 +56,10 @@ const bank = {
 
       if (!desc || isNaN(settleAmt) || Math.abs(settleAmt) > 5000000) continue;
 
-      // 农行符号规则：
-      //   消费/取现：原文入账金额为负 → amount取反变正（SPEND/WITHDRAW=正）
-      //   还款：原文入账金额为正，但最终表示欠款减少 → amount取反变负（REPAY=负）
-      //   退货：原文入账金额为正（退款进入账户）→ amount保留正（REFUND=正，抵消消费）
+      // 农行符号规则（统一规则：消费=正, 还款/退款/存入=负）：
+      //   消费/取现：原文为负 → 取反变正
+      //   还款/退款/存入：原文为正 → 取反变负
+      //   所有类型统一取反，无特例
       const transType = rawType ? (typeMap[rawType] || "FEE") : null;
       // null类型时根据描述推断
       let finalType = transType;
@@ -69,7 +69,7 @@ const bank = {
         else if (settleAmt < 0) finalType = "SPEND";  // 支出
         else finalType = "REPAY";  // 正数=还款
       }
-      const amount = finalType === "REFUND" ? settleAmt : -settleAmt;
+      const amount = -settleAmt;
 
       const td = `${tY}-${String(tM).padStart(2, "0")}-${String(tD).padStart(2, "0")}`;
       const pd = `${pY}-${String(pM).padStart(2, "0")}-${String(pD).padStart(2, "0")}`;
