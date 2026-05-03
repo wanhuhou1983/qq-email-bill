@@ -39,83 +39,91 @@ def clean_text(s):
 with open(MD_PATH, "r", encoding="utf-8") as f:
     content = f.read()
 
-# 提取所有 <tr> 行
+# 按 <table> 分开解析，处理 rowspan
+ALL_TABLES = re.findall(r"<table>(.*?)</table>", content, re.DOTALL | re.IGNORECASE)
+
 rows_data = []
 seen = set()
 
-for tr_match in re.finditer(r"<tr>(.*?)</tr>", content, re.DOTALL | re.IGNORECASE):
-    tr_html = tr_match.group(1)
-    tds = re.findall(r"<td>(.*?)</td>", tr_html, re.DOTALL | re.IGNORECASE)
-    if len(tds) < 7:
-        continue
-    tds = [clean_text(td) for td in tds]
+for table_html in ALL_TABLES:
+    for tr_match in re.finditer(r"<tr>(.*?)</tr>", table_html, re.DOTALL | re.IGNORECASE):
+        tr_html = tr_match.group(1)
+        td_parts = re.findall(r"(<td[^>]*>)(.*?)</td>", tr_html, re.DOTALL | re.IGNORECASE)
+        tds_raw = [t[1] for t in td_parts]
+        if len(tds_raw) < 7:
+            continue
+        tds = [clean_text(td) for td in tds_raw]
+        date_raw = tds[0]
+        if not re.match(r"^\d{8}$", date_raw):
+            continue
 
-    date_raw = tds[0]
-    if not re.match(r"^\d{8}$", date_raw):
-        continue
+        # 动态列映射: 检查tds[2]是否含中文→无凭证号列
+        if len(tds) >= 11 and not re.search(r"[\u4e00-\u9fff]", tds[2]):
+            di = 3  # 有凭证号列, desc在索引3
+        else:
+            di = 2  # 无凭证号列, desc在索引2
 
-    # 列结构: 交易日期|交易行|凭证号|摘要|借方|贷方|余额|备注|对手账号|对手名称|交易时间|参考号|对手银行|对方银行
-    desc = tds[3] if len(tds) > 3 else ""
-    debit_raw = tds[4] if len(tds) > 4 else ""
-    credit_raw = tds[5] if len(tds) > 5 else ""
-    balance_raw = tds[6] if len(tds) > 6 else ""
-    remark = tds[7] if len(tds) > 7 else ""
-    cp_account = tds[8] if len(tds) > 8 else ""
-    cp_name = tds[9] if len(tds) > 9 else ""
-    time_raw = tds[10] if len(tds) > 10 else ""
-    cp_bank = tds[12] if len(tds) > 12 else ""
+        desc = tds[di]
+        debit_raw = tds[di+1] if len(tds) > di+1 else ""
+        credit_raw = tds[di+2] if len(tds) > di+2 else ""
+        balance_raw = tds[di+3] if len(tds) > di+3 else ""
+        remark = tds[di+4] if len(tds) > di+4 else ""
+        cp_account = tds[di+5] if len(tds) > di+5 else ""
+        cp_name = tds[di+6] if len(tds) > di+6 else ""
+        time_raw = tds[di+7] if len(tds) > di+7 else ""
+        cp_bank = tds[di+9] if len(tds) > di+9 else ""
 
-    # 金额解析
-    debit = parse_amt(debit_raw)
-    credit = parse_amt(credit_raw)
-    balance = parse_amt(balance_raw)
+        # 金额解析
+        debit = parse_amt(debit_raw)
+        credit = parse_amt(credit_raw)
+        balance = parse_amt(balance_raw)
 
-    # 跳过无摘要也无金额的行
-    if not desc and debit == 0 and credit == 0:
-        continue
+        # 跳过无摘要也无金额的行
+        if not desc and debit == 0 and credit == 0:
+            continue
 
-    # 跳过金额异常大的（可能是列错位混入了账号）
-    if abs(debit) > 1e8 or abs(credit) > 1e8 or abs(balance) > 1e8:
-        continue
+        # 跳过金额异常大的（可能是列错位混入了账号）
+        if abs(debit) > 1e8 or abs(credit) > 1e8 or abs(balance) > 1e8:
+            continue
 
-    # 统一金额
-    if debit > 0:
-        amount = -debit
-    elif credit > 0:
-        amount = credit
-    else:
-        amount = 0.0
+        # 统一金额
+        if debit > 0:
+            amount = -debit
+        elif credit > 0:
+            amount = credit
+        else:
+            amount = 0.0
 
-    # 交易时间
-    trans_time = None
-    time_parts = time_raw.strip().split()
-    for p in time_parts:
-        if re.match(r"\d{2}:\d{2}:\d{2}", p):
-            trans_time = p
-            break
+        # 交易时间
+        trans_time = None
+        time_parts = time_raw.strip().split()
+        for p in time_parts:
+            if re.match(r"\d{2}:\d{2}:\d{2}", p):
+                trans_time = p
+                break
 
-    # 日期
-    trans_date = f"{date_raw[:4]}-{date_raw[4:6]}-{date_raw[6:8]}"
+        # 日期
+        trans_date = f"{date_raw[:4]}-{date_raw[4:6]}-{date_raw[6:8]}"
 
-    # 去重 key
-    dedup_key = (trans_date, desc[:80], amount, cp_name[:40])
-    if dedup_key in seen:
-        continue
-    seen.add(dedup_key)
+        # 去重 key
+        dedup_key = (trans_date, desc[:80], amount, cp_name[:40])
+        if dedup_key in seen:
+            continue
+        seen.add(dedup_key)
 
-    rows_data.append({
-        "trans_date": trans_date,
-        "description": desc[:500] or "(无摘要)",
-        "debit": debit,
-        "credit": credit,
-        "balance": balance,
-        "amount": amount,
-        "remark": remark[:200],
-        "counterparty_account": cp_account[:50],
-        "counterparty_name": cp_name[:100],
-        "counterparty_bank": cp_bank[:100],
-        "trans_time": trans_time,
-    })
+        rows_data.append({
+            "trans_date": trans_date,
+            "description": desc[:500] or "(无摘要)",
+            "debit": debit,
+            "credit": credit,
+            "balance": balance,
+            "amount": amount,
+            "remark": remark[:200],
+            "counterparty_account": cp_account[:50],
+            "counterparty_name": cp_name[:100],
+            "counterparty_bank": cp_bank[:100],
+            "trans_time": trans_time,
+        })
 
 print(f"解析到 {len(rows_data)} 条去重交易")
 
