@@ -775,6 +775,14 @@ function resetDebitFilters() {
   doDebitSearch(0);
 }
 
+function debitExportExcel() {
+  var params = new URLSearchParams();
+  if (fDebit('d-start')) params.set('start_date', fDebit('d-start'));
+  if (fDebit('d-end')) params.set('end_date', fDebit('d-end'));
+  if (fDebit('d-keyword')) params.set('keyword', fDebit('d-keyword'));
+  window.open('/api/debit/export?' + params.toString(), '_blank');
+}
+
 async function refreshFromQQ() {
   const status = document.getElementById('refresh-status');
   status.textContent = '⏳ 正在拉取QQ邮箱最新账单...';
@@ -852,6 +860,7 @@ loadMeta();
   <div class="panel">
     <div class="results-header">
       <div class="panel-title" style="margin:0">📋 借记卡交易 <span id="d-result-count"></span> <span id="d-result-totals" style="font-size:13px;font-weight:400;color:#555;"></span></div>
+      <button class="btn btn-secondary" onclick="debitExportExcel()" style="font-size:12px;padding:5px 12px;">📥 导出Excel</button>
     </div>
     <div class="table-wrap">
       <table>
