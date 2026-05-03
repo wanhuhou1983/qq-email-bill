@@ -52,7 +52,7 @@ const bank = {
       const pY = parseInt(m[5]) + 2000, pM = parseInt(m[6]), pD = parseInt(m[7]);
       const cardRaw = m[8];
       const desc = m[9].replace(/\s+/g, "").substring(0, 200);
-      const settleAmt = parseFloat(m[10].replace(/,/g, ""));
+      const settleAmt = parseFloat(m[11].replace(/,/g, ""));
 
       if (!desc || isNaN(settleAmt) || Math.abs(settleAmt) > 5000000) continue;
 
@@ -60,11 +60,16 @@ const bank = {
       //   消费/取现：原文入账金额为负 → amount取反变正（SPEND/WITHDRAW=正）
       //   还款：原文入账金额为正，但最终表示欠款减少 → amount取反变负（REPAY=负）
       //   退货：原文入账金额为正（退款进入账户）→ amount保留正（REFUND=正，抵消消费）
-      // 即：SPEND/WITHDRAW/REFUND→取反(-settleAmt)，REPAY→取反(-settleAmt)
-      // 结论：所有类型统一取反，REFUND再做一次取反变回正
-      const amount = rawType === "REFUND" ? settleAmt : -settleAmt;
-      // 根据类型关键词推断trans_type：消费→SPEND，退货→REFUND，还款→REPAY，取现→WITHDRAW，其余→FEE
       const transType = rawType ? (typeMap[rawType] || "FEE") : null;
+      // null类型时根据描述推断
+      let finalType = transType;
+      if (!finalType) {
+        if (desc.includes("退货") || desc.includes("退款")) finalType = "REFUND";
+        else if (desc.includes("还款") || desc.includes("还")) finalType = "REPAY";
+        else if (settleAmt < 0) finalType = "SPEND";  // 支出
+        else finalType = "REPAY";  // 正数=还款
+      }
+      const amount = finalType === "REFUND" ? settleAmt : -settleAmt;
 
       const td = `${tY}-${String(tM).padStart(2, "0")}-${String(tD).padStart(2, "0")}`;
       const pd = `${pY}-${String(pM).padStart(2, "0")}-${String(pD).padStart(2, "0")}`;
@@ -75,7 +80,7 @@ const bank = {
         trans_date: td, post_date: pd, description: desc,
         amount, card_last4: cardLast4,
         cardholder: cardholder,
-        trans_type: transType,
+        trans_type: finalType,
       });
     }
 
