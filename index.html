@@ -146,7 +146,7 @@
   .tab-bar button:last-child { border-radius:0 8px 8px 0; }
   .tab-bar button.active { background:var(--primary); color:#fff; border-color:var(--primary); }
 
-  /* 账期4x4宫格 - 下拉版 */
+  /* 账期下拉 - 账单列表版 */
   .cycle-drop-wrap { position:relative; width:100%; }
   .cycle-drop-trigger {
     padding:8px 10px; border:1px solid var(--border); border-radius:6px;
@@ -159,23 +159,19 @@
   .cycle-drop-panel {
     display:none; position:absolute; top:calc(100% + 4px); left:0; z-index:100;
     background:#fff; border:1px solid #e5e7eb; border-radius:8px;
-    box-shadow:0 8px 24px rgba(0,0,0,.12); padding:10px; width:200px;
+    box-shadow:0 8px 24px rgba(0,0,0,.12); padding:6px; width:320px; max-height:360px; overflow-y:auto;
   }
   .cycle-drop-panel.show { display:block; }
-  .cycle-drop-panel .cy-header { display:flex; align-items:center; justify-content:center; gap:10px; margin-bottom:8px; }
-  .cycle-drop-panel #cy-year-label { font-size:14px; font-weight:600; color:#333; min-width:40px; text-align:center; }
-  .cycle-drop-panel .btn-arrow { background:#f3f4f6; border:1px solid #d1d5db; border-radius:4px; padding:3px 10px; cursor:pointer; font-size:13px; line-height:1.4; }
-  .cycle-drop-panel .btn-arrow:hover { background:#e5e7eb; }
-  .cycle-drop-panel .cycle-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:3px; }
-  .cycle-drop-panel .cy-cell {
-    padding:5px 2px; text-align:center; font-size:12px; border-radius:4px;
-    cursor:pointer; border:1px solid #e5e7eb; background:#f9fafb; color:#9ca3af;
-    transition:all .15s;
+  .cycle-bill-item {
+    display:flex; align-items:center; padding:6px 8px; margin:2px 0;
+    font-size:12px; border-radius:6px; cursor:pointer; border:1px solid #e5e7eb;
+    background:#fff; color:#333; transition:all .15s; gap:6px;
   }
-  .cycle-drop-panel .cy-cell.has-data { background:#d1fae5; color:#065f46; border-color:#6ee7b7; font-weight:500; cursor:pointer; }
-  .cycle-drop-panel .cy-cell.has-data:hover { background:#a7f3d0; }
-  .cycle-drop-panel .cy-cell.selected { background:var(--primary); color:#fff; border-color:var(--primary); font-weight:600; }
-  .cycle-drop-panel .cy-cell.selected:hover { background:#6d28d9; }
+  .cycle-bill-item:hover { background:#f3f4f6; border-color:#d1d5db; }
+  .cycle-bill-item.selected { background:var(--primary); color:#fff; border-color:var(--primary); }
+  .cycle-bill-item .bill-dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+  .cycle-bill-item .bill-label { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .cycle-no-data { padding:16px 8px; text-align:center; font-size:12px; color:#9ca3af; }
 
   /* 日期箭头 */
   .date-arrow-wrap { display:flex; align-items:center; gap:4px; }
@@ -255,12 +251,7 @@
         <div class="cycle-drop-wrap">
           <div class="cycle-drop-trigger" id="f-cycle-trigger" onclick="toggleCycleDropdown()">----</div>
           <div class="cycle-drop-panel" id="f-cycle-panel">
-            <div class="cy-header">
-              <button class="btn-arrow" onclick="shiftCycleYear(-1)">‹</button>
-              <span id="cy-year-label">2026</span>
-              <button class="btn-arrow" onclick="shiftCycleYear(1)">›</button>
-            </div>
-            <div class="cycle-grid" id="f-cycle-grid"></div>
+            <div id="f-bill-list"></div>
           </div>
           <input type="hidden" id="f-cycle" value="">
         </div>
@@ -439,8 +430,7 @@ async function loadMeta() {
       <div class="stat-card"><div class="label">信用卡数量</div><div class="value">${cardCount}</div></div>
     `;
 
-    // 初始化账期滚动选择器
-    initCycleGrid();
+    // 加载账期账单列表
     refreshCycles();
 
     // 默认查询
@@ -457,7 +447,7 @@ function resetFilters() {
   document.querySelectorAll('#f-cardholder,#f-bank,#f-type,#f-currency').forEach(e => e.value = '');
   document.querySelectorAll('#f-min-amt,#f-max-amt,#f-start,#f-end').forEach(e => e.value = '');
   document.getElementById('f-cycle').value = '';
-  document.querySelectorAll('#f-cycle-grid .cy-cell').forEach(el => el.classList.remove('selected'));
+  document.querySelectorAll('#f-bill-list .cycle-bill-item').forEach(el => el.classList.remove('selected'));
   var t = document.getElementById('f-cycle-trigger');
   if (t) { t.textContent = '----'; t.classList.remove('has-value'); }
   isAiMode = false;
@@ -465,30 +455,42 @@ function resetFilters() {
   doSearch(0);
 }
 
-// ============ 账期4x4下拉宫格 ============
-let _cycleYear = new Date().getFullYear();
-let _cyclesAvailable = [];
+// ============ 账期下拉 - 账单列表版 ============
+let _billsAvailable = [];
 
-function initCycleGrid() {
-  _cycleYear = new Date().getFullYear();
-  renderCycleGrid();
-}
+function renderBillList() {
+  const list = document.getElementById('f-bill-list');
+  const selectedId = document.getElementById('f-cycle').value;
 
-function renderCycleGrid() {
-  const grid = document.getElementById('f-cycle-grid');
-  const label = document.getElementById('cy-year-label');
-  label.textContent = _cycleYear;
-  const selected = document.getElementById('f-cycle').value;
-  const months = [1,2,3,4,5,6,7,8,9,10,11,12];
+  if (!_billsAvailable.length) {
+    list.innerHTML = '<div class="cycle-no-data">暂无数据</div>';
+    return;
+  }
 
-  grid.innerHTML = months.map(m => {
-    const ym = _cycleYear + '-' + String(m).padStart(2, '0');
-    const hasData = _cyclesAvailable.indexOf(ym) >= 0;
-    const isSelected = selected === ym;
-    const cls = isSelected ? 'cy-cell selected'
-      : hasData ? 'cy-cell has-data'
-      : 'cy-cell';
-    return `<div class="${cls}" data-ym="${ym}" onclick="selectCycleGrid(this)" title="${ym}">${String(m).padStart(2,'0')}</div>`;
+  // 按银行代码分组
+  const groups = {};
+  for (const bill of _billsAvailable) {
+    const key = bill.bank_code || bill.bank_name || '其他';
+    if (!groups[key]) groups[key] = [];
+    groups[key].push(bill);
+  }
+
+  const BANK_COLORS = {
+    'ABC':'#059669','BOCOM':'#2563eb','CCB':'#dc2626','CEB':'#d97706',
+    'CGB':'#7c3aed','CITIC':'#0891b2','CMB':'#db2777','CMBC':'#ca8a04',
+    'CZB':'#0d9488','ICBC':'#1d4ed8','PAB':'#9333ea','BOC':'#be185d','SPDB':'#1e40af',
+  };
+
+  list.innerHTML = Object.entries(groups).map(([bk, bills]) => {
+    return bills.map(b => {
+      const isSelected = selectedId === String(b.id);
+      const color = BANK_COLORS[b.bank_code] || '#6b7280';
+      const label = `${b.cycle_start||'?'}~${b.cycle_end||'?'} ${b.cardholder} ${b.account_masked||''}`;
+      return `<div class="cycle-bill-item ${isSelected?'selected':''}" data-id="${b.id}" onclick="selectBill(this,'${b.id}')" title="${b.bank_name||bk} | ${label}">
+        <span class="bill-dot" style="background:${color}"></span>
+        <span class="bill-label">${bk} | ${label}</span>
+      </div>`;
+    }).join('');
   }).join('');
 }
 
@@ -497,18 +499,12 @@ function toggleCycleDropdown() {
   panel.classList.toggle('show');
 }
 
-function shiftCycleYear(delta) {
-  _cycleYear += delta;
-  renderCycleGrid();
-}
-
-function selectCycleGrid(el) {
-  document.querySelectorAll('#f-cycle-grid .cy-cell').forEach(e => e.classList.remove('selected'));
+function selectBill(el, id) {
+  document.querySelectorAll('#f-bill-list .cycle-bill-item').forEach(e => e.classList.remove('selected'));
   el.classList.add('selected');
-  const ym = el.dataset.ym;
-  document.getElementById('f-cycle').value = ym;
+  document.getElementById('f-cycle').value = id;
   const trigger = document.getElementById('f-cycle-trigger');
-  trigger.textContent = ym.replace('-', '');
+  trigger.textContent = '账单 #' + id;
   trigger.classList.add('has-value');
   document.getElementById('f-cycle-panel').classList.remove('show');
   doSearch(0);
@@ -529,11 +525,11 @@ async function refreshCycles() {
   if (bank) params.set('bank_code', bank);
   try {
     const data = await api('/api/bill-cycles?' + params.toString());
-    _cyclesAvailable = data.cycles || [];
+    _billsAvailable = data.bills || [];
   } catch(e) {
-    _cyclesAvailable = [];
+    _billsAvailable = [];
   }
-  renderCycleGrid();
+  renderBillList();
 }
 
 // ============ 日期箭头 ============
@@ -633,7 +629,7 @@ function getParams(offset = 0) {
   const maxAmt = f('f-max-amt'); if (maxAmt) p.set('max_amount', maxAmt);
   const start = f('f-start'); if (start) p.set('start_date', start);
   const end = f('f-end'); if (end) p.set('end_date', end);
-  const cycle = f('f-cycle'); if (cycle) p.set('bill_cycle', cycle);
+  const cycle = f('f-cycle'); if (cycle) p.set('bill_id', cycle);
   const cl4 = getCardFilterParam(); if (cl4) p.set('card_last4', cl4);
   p.set('limit', PAGE_SIZE);
   p.set('offset', offset);

@@ -68,9 +68,14 @@ def build_where_clause(params: dict) -> tuple[str, list]:
         conditions.append("AND t.trans_date <= %s")
         values.append(ed)
 
+    bill_id = params.get("bill_id")
+    if bill_id is not None:
+        conditions.append("AND t.bill_id = %s")
+        values.append(bill_id)
+
     bc = params.get("bill_cycle")
     if bc:
-        # 账期匹配: 优先bill_cycle字段, 没有则用交易日期范围(如农行无bill_cycle)
+        # 旧版自然月方式（兼容前端未改前）
         from datetime import datetime
         try:
             y, m = int(bc[:4]), int(bc[5:7])

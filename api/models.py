@@ -4,6 +4,7 @@ from pydantic import BaseModel
 
 class TransactionItem(BaseModel):
     id: int
+    bill_id: Optional[int] = None
     bank_code: str
     bank_name: str
     cardholder: str
