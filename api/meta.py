@@ -99,3 +99,15 @@ def get_debit_account_last4s(bank_code: Optional[str] = Query(None)):
         return [r[0] for r in cur.fetchall()]
     finally:
         cur.close(); conn.close()
+
+
+@router.get("/card-info")
+def get_card_info():
+    conn = get_conn(); cur = conn.cursor()
+    try:
+        cur.execute("SELECT id, account_type, bank_code, bank_name, cardholder, card_number, card_last4, card_category, fee_desc FROM card_info ORDER BY bank_code, id")
+        return [{"id": r[0], "account_type": r[1], "bank_code": r[2], "bank_name": r[3],
+                 "cardholder": r[4], "card_number": r[5], "card_last4": r[6],
+                 "card_category": r[7], "fee_desc": r[8]} for r in cur.fetchall()]
+    finally:
+        cur.close(); conn.close()

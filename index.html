@@ -359,6 +359,14 @@
     <div id="ai-msg"></div>
   </div>
 
+  <!-- 卡片信息 -->
+  <div class="panel" id="card-info-panel" style="display:none;">
+    <div class="panel-title" style="cursor:pointer;user-select:none;" onclick="toggleCardInfo()">
+      💳 我的卡片 <span id="card-info-toggle" style="font-size:12px;color:#999;">▼</span>
+    </div>
+    <div id="card-info-body"></div>
+  </div>
+
   <!-- 结果 -->
   <div class="panel">
     <div class="results-header">
@@ -434,6 +442,8 @@ async function api(url) {
 let _banks = []; // 全部银行数据（含持卡人）
 
 async function loadMeta() {
+  // 加载卡片信息
+  loadCardInfo();
   try {
     const [cardholders, banks, currencies] = await Promise.all([
       api('/api/cardholders'),
@@ -1211,6 +1221,50 @@ loadMeta();
     <div id="d-pager" class="pager"></div>
   </div>
 </div>
+
+<style>
+.card-info-table { width:100%; border-collapse:collapse; font-size:13px; }
+.card-info-table th { background:#f3f4f6; padding:8px 6px; text-align:left; border-bottom:2px solid #d1d5db; font-weight:600; }
+.card-info-table td { padding:6px; border-bottom:1px solid #e5e7eb; }
+.card-info-table tr:hover td { background:#f9fafb; }
+.card-info-table .cat-tag { display:inline-block; background:#e0e7ff; color:#3730a3; border-radius:4px; padding:1px 6px; font-size:11px; }
+</style>
+
+<script>
+let _cardInfoLoaded = false;
+
+async function loadCardInfo() {
+  if (_cardInfoLoaded) return;
+  try {
+    const cards = await api('/api/card-info');
+    if (!cards || cards.length === 0) return;
+    _cardInfoLoaded = true;
+    const panel = document.getElementById('card-info-panel');
+    const body = document.getElementById('card-info-body');
+    panel.style.display = '';
+    let html = '<table class="card-info-table"><thead><tr><th>银行</th><th>卡号</th><th>尾号</th><th>类型</th><th>持卡人</th><th>说明</th></tr></thead><tbody>';
+    for (const c of cards) {
+      const cat = c.card_category ? '<span class="cat-tag">'+c.card_category+'</span>' : '';
+      const num = '**** **** **** '+c.card_last4;
+      html += '<tr><td>'+debitBankName(c.bank_code)+'</td><td style="font-family:monospace;">'+num+'</td><td style="font-family:monospace;">'+c.card_last4+'</td><td>'+cat+'</td><td>'+c.cardholder+'</td><td style="color:#6b7280;font-size:12px;">'+(c.fee_desc||'')+'</td></tr>';
+    }
+    html += '</tbody></table>';
+    body.innerHTML = html;
+  } catch(e) { console.error(e); }
+}
+
+function toggleCardInfo() {
+  const body = document.getElementById('card-info-body');
+  const toggle = document.getElementById('card-info-toggle');
+  if (body.style.display === 'none') {
+    body.style.display = '';
+    toggle.textContent = '▼';
+  } else {
+    body.style.display = 'none';
+    toggle.textContent = '▶';
+  }
+}
+</script>
 
 </body>
 </html>
