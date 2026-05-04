@@ -102,12 +102,34 @@ def get_debit_account_last4s(bank_code: Optional[str] = Query(None)):
 
 
 @router.get("/card-info")
-def get_card_info():
+def get_card_info(
+    account_type: Optional[str] = Query(None),
+    cardholder: Optional[str] = Query(None),
+    bank_code: Optional[str] = Query(None),
+    card_class: Optional[str] = Query(None),
+):
     conn = get_conn(); cur = conn.cursor()
     try:
-        cur.execute("SELECT id, account_type, bank_code, bank_name, cardholder, card_number, card_last4, card_category, fee_desc FROM card_info ORDER BY bank_code, id")
+        sql = """SELECT id, account_type, bank_code, bank_name, cardholder, card_number,
+                 card_last4, card_category, fee_desc, credit_limit,
+                 card_class, location, linked_card FROM card_info"""
+        conds = []
+        vals = []
+        if account_type:
+            conds.append("account_type = %s"); vals.append(account_type)
+        if cardholder:
+            conds.append("cardholder ILIKE %s"); vals.append(f"%{cardholder}%")
+        if bank_code:
+            conds.append("(bank_code ILIKE %s OR bank_name ILIKE %s)"); vals.append(f"%{bank_code}%"); vals.append(f"%{bank_code}%")
+        if card_class:
+            conds.append("card_class = %s"); vals.append(card_class)
+        if conds:
+            sql += " WHERE " + " AND ".join(conds)
+        sql += " ORDER BY account_type, bank_code, id"
+        cur.execute(sql, vals)
         return [{"id": r[0], "account_type": r[1], "bank_code": r[2], "bank_name": r[3],
                  "cardholder": r[4], "card_number": r[5], "card_last4": r[6],
-                 "card_category": r[7], "fee_desc": r[8]} for r in cur.fetchall()]
+                 "card_category": r[7], "fee_desc": r[8], "credit_limit": r[9],
+                 "card_class": r[10], "location": r[11], "linked_card": r[12]} for r in cur.fetchall()]
     finally:
         cur.close(); conn.close()
