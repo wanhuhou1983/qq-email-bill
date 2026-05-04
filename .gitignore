@@ -15,17 +15,36 @@ node_modules/
 boc_output/
 *.xlsx
 *.csv
+qr_code/
+result.png
 
 # Git
 qq-email-bill.git/
 
 # Runtime
 fastapi.pid
+server_*.log
+app.log
 
 # Samples (moved to samples/)
 samples/
 *.txt
-*.pyc
-__pycache__/
-node_modules/
-app.log
+raw_*
+
+# Bank statement HTML samples — contain real personal financial data
+abc_real.html
+guangda_raw.html
+minsheng_raw.html
+pingan_raw.html
+zheshang_email_*.html
+zheshang_raw.html
+boc_html.html
+
+# Temp stock import folders
+whh_stock/
+wlq_stock/
+wdj_stock/
+stock_api_append.py
+
+# Temp files
+$null
