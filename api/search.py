@@ -671,3 +671,66 @@ def jd_ai_search(
     finally:
         cur.close(); conn.close()
 
+
+# ============ 证券交易查询 ============
+
+@router.get("/stock/meta")
+def stock_meta():
+    conn = get_reader_conn(); cur = conn.cursor()
+    try:
+        cur.execute("SELECT DISTINCT cardholder FROM stock_transactions ORDER BY cardholder")
+        ch = [r[0] for r in cur.fetchall()]
+        cur.execute("SELECT DISTINCT operation FROM stock_transactions ORDER BY operation")
+        ops = [r[0] for r in cur.fetchall()]
+        return {"cardholders": ch, "operations": ops}
+    finally:
+        cur.close(); conn.close()
+
+
+@router.get("/stock/search")
+def stock_search(
+    page: int = Query(0, ge=0),
+    size: int = Query(50, ge=0, le=200),
+    cardholder: Optional[str] = Query(None),
+    operation: Optional[str] = Query(None),
+    keyword: Optional[str] = Query(None),
+    start_date: Optional[date] = Query(None),
+    end_date: Optional[date] = Query(None),
+):
+    conds = []; vals = []
+    if cardholder:
+        conds.append("AND cardholder = %s"); vals.append(cardholder)
+    if operation:
+        conds.append("AND operation = %s"); vals.append(operation)
+    if keyword:
+        conds.append("AND (stock_code ILIKE %s OR stock_name ILIKE %s)")
+        vals.append(f"%{keyword}%"); vals.append(f"%{keyword}%")
+    if start_date:
+        conds.append("AND settle_date >= %s"); vals.append(start_date)
+    if end_date:
+        conds.append("AND settle_date <= %s"); vals.append(end_date)
+
+    where = " ".join(conds)
+    offset = page * size
+    conn = get_reader_conn(); cur = conn.cursor()
+    try:
+        cur.execute(f"SELECT COUNT(*) FROM stock_transactions WHERE 1=1 {where}", vals)
+        total = cur.fetchone()[0]
+        if size == 0:
+            return {"total": total, "transactions": []}
+
+        cur.execute(f"""SELECT id, settle_date, cardholder, account_number, stock_code, stock_name,
+                        operation, quantity, avg_price, trade_amount, settle_amount,
+                        fee, stamp_tax, cash_balance, shareholder_account
+                        FROM stock_transactions WHERE 1=1 {where}
+                        ORDER BY settle_date DESC, id DESC LIMIT {size} OFFSET {offset}""", vals)
+        cols = [desc[0] for desc in cur.description]
+        rows = cur.fetchall()
+        return {"total": total, "transactions": [row_to_dict(r, cols) for r in rows]}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    finally:
+        cur.close(); conn.close()
+

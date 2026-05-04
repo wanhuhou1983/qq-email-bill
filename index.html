@@ -148,7 +148,7 @@
     border-radius:0;
   }
   .tab-bar button:first-child { border-radius:8px 0 0 8px; }
-  .tab-bar button:nth-child(4) { border-radius:0 8px 8px 0; }
+  .tab-bar button:nth-child(5) { border-radius:0 8px 8px 0; }
   .tab-bar button.active { background:var(--primary); color:#fff; border-color:var(--primary); }
 
   /* 账期下拉 - 账单列表版 */
@@ -251,6 +251,7 @@
     <button class="active" id="tab-credit" onclick="switchTab('credit')">信用卡交易查询</button>
     <button id="tab-debit" onclick="switchTab('debit')">借记卡交易查询</button>
     <button id="tab-jd" onclick="switchTab('jd')">电商交易查询</button>
+    <button id="tab-stock" onclick="switchTab('stock')">证券交易查询</button>
     <button id="tab-cards" onclick="switchTab('cards')">卡片管理</button>
   </div>
 
@@ -1057,16 +1058,19 @@ function switchTab(tab) {
   document.getElementById('tab-debit').classList.toggle('active', tab === 'debit');
   document.getElementById('tab-cards').classList.toggle('active', tab === 'cards');
   document.getElementById('tab-jd').classList.toggle('active', tab === 'jd');
+  document.getElementById('tab-stock').classList.toggle('active', tab === 'stock');
   document.getElementById('credit-section').style.display = tab === 'credit' ? '' : 'none';
   document.getElementById('debit-section').style.display = tab === 'debit' ? '' : 'none';
   document.getElementById('cards-section').style.display = tab === 'cards' ? '' : 'none';
   document.getElementById('jd-section').style.display = tab === 'jd' ? '' : 'none';
+  document.getElementById('stock-section').style.display = tab === 'stock' ? '' : 'none';
   if (tab === 'debit') {
     loadDebitMeta();
     if (!dCurrentTotal) doDebitSearch(0);
   }
   if (tab === 'cards') loadCardInfo();
   if (tab === 'jd') { loadJdMeta(); doJdSearch(0); }
+  if (tab === 'stock') { loadStockData(); }
 }
 
 // ============ 借记卡查询 ============
@@ -1605,6 +1609,52 @@ loadMeta();
   </div>
 </div>
 
+<!-- ====== 证券交易 ====== -->
+<div id="stock-section" style="display:none;">
+  <div class="panel">
+    <div class="panel-title">🔍 证券交易查询</div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>姓名</label>
+        <select id="sf-name"><option value="">全部</option></select>
+      </div>
+      <div class="form-group">
+        <label>操作</label>
+        <select id="sf-op"><option value="">全部</option></select>
+      </div>
+      <div class="form-group">
+        <label>证券</label>
+        <input type="text" id="sf-stock" placeholder="代码或名称" style="padding:6px;border:1px solid #ccc;border-radius:6px;font-size:13px;width:100%;box-sizing:border-box;">
+      </div>
+      <div class="form-group">
+        <label>开始日期</label>
+        <input type="date" id="sf-start">
+      </div>
+      <div class="form-group">
+        <label>结束日期</label>
+        <input type="date" id="sf-end">
+      </div>
+    </div>
+    <div class="form-row" style="margin-top:14px;">
+      <button class="btn btn-primary" onclick="doStockSearch(0)">🔍 查询</button>
+    </div>
+  </div>
+  <div class="panel">
+    <div class="results-header">
+      <div class="panel-title" style="margin:0">📋 证券交易 <span id="sf-result-count"></span></div>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>日期</th><th>姓名</th><th>证券代码</th><th>证券名称</th><th>操作</th><th>数量</th><th>成交金额</th><th>发生金额</th><th>手续费</th></tr>
+        </thead>
+        <tbody id="sf-result-body"></tbody>
+      </table>
+    </div>
+    <div id="sf-pager" class="pager"></div>
+  </div>
+</div>
+
 <style>
 .card-info-table { width:100%; border-collapse:collapse; font-size:13px; }
 .card-info-table th { background:#f3f4f6; padding:8px 6px; text-align:left; border-bottom:2px solid #d1d5db; font-weight:600; }
@@ -1713,6 +1763,66 @@ async function loadJdMeta() {
     var opts = [{v:'',t:'\u5168\u90e8'}];
     for (var t of types) opts.push({v:t,t:t});
     fillSelect('jf-type', opts);
+  } catch(e) { console.error(e); }
+}
+
+// ============ 证券交易 ============
+let _stockLoaded = false;
+function sf(id) { const e=document.getElementById('sf-'+id); return e?e.value:''; }
+
+async function loadStockData() {
+  if (_stockLoaded) return;
+  _stockLoaded = true;
+  try {
+    // 加载姓名和操作筛选
+    var resp = await fetch('/api/stock/meta');
+    var meta = await resp.json();
+    fillSelect('sf-name', [{v:'',t:'全部'}].concat(meta.cardholders.map(function(n){return {v:n,t:n};})));
+    fillSelect('sf-op', [{v:'',t:'全部'}].concat(meta.operations.map(function(o){return {v:o,t:o};})));
+  } catch(e) { console.error(e); }
+  doStockSearch(0);
+}
+
+async function doStockSearch(page) {
+  var params = new URLSearchParams();
+  params.set('size', 50);
+  params.set('page', page);
+  if (sf('name')) params.set('cardholder', sf('name'));
+  if (sf('op')) params.set('operation', sf('op'));
+  if (sf('stock')) params.set('keyword', sf('stock'));
+  if (sf('start')) params.set('start_date', sf('start'));
+  if (sf('end')) params.set('end_date', sf('end'));
+  
+  try {
+    var resp = await fetch('/api/stock/search?' + params.toString());
+    var data = await resp.json();
+    
+    document.getElementById('sf-result-count').textContent = data.total > 0 ? '\u2014 \u5171 ' + data.total.toLocaleString() + ' \u6761' : '';
+    
+    var html = '';
+    if (data.transactions && data.transactions.length) {
+      html = data.transactions.map(function(r){
+        var amt = r.settle_amount != null ? r.settle_amount.toFixed(2) : '';
+        var amtCls = r.settle_amount != null && r.settle_amount < 0 ? 'style="color:#059669;"' : 'style="color:#dc2626;"';
+        return '<tr><td>' + r.settle_date + '</td><td>' + esc(r.cardholder) + '</td><td>' + (r.stock_code||'') + '</td><td>' + esc(r.stock_name||'') + '</td><td>' + esc(r.operation) + '</td><td>' + (r.quantity||'') + '</td><td>' + (r.trade_amount!=null?r.trade_amount.toFixed(2):'') + '</td><td ' + amtCls + '>' + amt + '</td><td>' + (r.fee!=null?r.fee.toFixed(2):'') + '</td></tr>';
+      }).join('');
+    } else {
+      html = '<tr><td colspan="9" style="text-align:center;color:#9ca3af;padding:20px;">\u6682\u65e0\u6570\u636e</td></tr>';
+    }
+    document.getElementById('sf-result-body').innerHTML = html;
+    
+    // pager
+    var totalPages = Math.ceil(data.total / 50);
+    var el = document.getElementById('sf-pager');
+    if (totalPages <= 1) { el.innerHTML = ''; return; }
+    var h = '';
+    h += '<button ' + (page===0?'disabled':'') + ' onclick="doStockSearch(0)">\u00ab \u9996\u9875</button>';
+    h += '<button ' + (page===0?'disabled':'') + ' onclick="doStockSearch(' + (page-1) + ')">\u2039 \u4e0a\u4e00\u9875</button>';
+    h += '<span class="page-info">\u7b2c ' + (page+1) + '/' + totalPages + ' \u9875\uff0c\u5171 ' + data.total.toLocaleString() + ' \u6761</span>';
+    h += '<button ' + (page>=totalPages-1?'disabled':'') + ' onclick="doStockSearch(' + (page+1) + ')">\u4e0b\u4e00\u9875 \u203a</button>';
+    h += '<button ' + (page>=totalPages-1?'disabled':'') + ' onclick="doStockSearch(' + (totalPages-1) + ')">\u672b\u9875 \u00bb</button>';
+    h += '<span class="page-jump">\u8df3\u8f6c <input type="number" min="1" max="' + totalPages + '" value="' + (page+1) + '" onchange="var v=parseInt(this.value);if(v>=1&&v<=' + totalPages + ')doStockSearch(v-1)" style="width:50px;padding:3px 4px;font-size:12px;border:1px solid #d1d5db;border-radius:4px;text-align:center;"> \u9875</span>';
+    el.innerHTML = h;
   } catch(e) { console.error(e); }
 }
 
