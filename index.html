@@ -958,6 +958,15 @@ function esc(s) {
     .replace(/"/g,'&quot;');
 }
 
+function debitBankName(code) {
+  const names = {HRB:'哈尔滨银行', ICBC:'工商银行', CCB:'建设银行', ABC:'农业银行',
+    BOC:'中国银行', BOCOM:'交通银行', CMB:'招商银行', COMM:'交通银行',
+    SPDB:'浦发银行', CEB:'光大银行', CMBC:'民生银行', CITIC:'中信银行',
+    CGB:'广发银行', CZB:'浙商银行', PAB:'平安银行', NBC:'宁波银行',
+    BOSH:'上海银行', SRCB:'上海农商行', PSBC:'邮储银行'};
+  return names[code] || code;
+}
+
 // ============ 标签页切换 ============
 function switchTab(tab) {
   document.getElementById('tab-credit').classList.toggle('active', tab === 'credit');
@@ -987,7 +996,7 @@ async function doDebitSearch(page) {
     renderDebitTable(data);
     renderDebitPager(page);
   } catch(e) {
-    document.getElementById('d-result-body').innerHTML = '<tr><td colspan="8" class="error-msg">请求失败: ' + e.message + '</td></tr>';
+    document.getElementById('d-result-body').innerHTML = '<tr><td colspan="10" class="error-msg">请求失败: ' + e.message + '</td></tr>';
   }
 }
 
@@ -1004,7 +1013,7 @@ function renderDebitTable(data) {
   }
 
   if (!rows.length) {
-    document.getElementById('d-result-body').innerHTML = '<tr><td colspan="8" style="text-align:center;color:#9ca3af;padding:30px;">暂无数据</td></tr>';
+    document.getElementById('d-result-body').innerHTML = '<tr><td colspan="10" style="text-align:center;color:#9ca3af;padding:30px;">暂无数据</td></tr>';
     return;
   }
 
@@ -1012,7 +1021,11 @@ function renderDebitTable(data) {
     var income = r.credit > 0 ? '<span style="color:#059669;">+' + r.credit.toLocaleString('zh-CN',{minimumFractionDigits:2}) + '</span>' : '';
     var expense = r.debit > 0 ? '<span style="color:#dc2626;">-' + r.debit.toLocaleString('zh-CN',{minimumFractionDigits:2}) + '</span>' : '';
     var type = r.amount >= 0 ? '<span style="color:#059669;">收入</span>' : '<span style="color:#dc2626;">支出</span>';
+    var bankName = debitBankName(r.bank_code);
+    var last4 = r.account_number ? r.account_number.slice(-4) : '';
     return '<tr>' +
+      '<td>' + bankName + '</td>' +
+      '<td>' + last4 + '</td>' +
       '<td>' + r.trans_date + '</td>' +
       '<td>' + type + '</td>' +
       '<td title="' + esc(r.description) + '">' + esc(r.description) + '</td>' +
@@ -1132,6 +1145,8 @@ loadMeta();
       <table>
         <thead>
           <tr>
+            <th>银行</th>
+            <th>尾号</th>
             <th>日期</th>
             <th>交易类型</th>
             <th>摘要</th>
