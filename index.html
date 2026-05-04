@@ -143,7 +143,7 @@
     border-radius:0;
   }
   .tab-bar button:first-child { border-radius:8px 0 0 8px; }
-  .tab-bar button:last-child { border-radius:0 8px 8px 0; }
+  .tab-bar button:nth-child(3) { border-radius:0 8px 8px 0; }
   .tab-bar button.active { background:var(--primary); color:#fff; border-color:var(--primary); }
 
   /* 账期下拉 - 账单列表版 */
@@ -218,8 +218,9 @@
   </header>
 
   <div class="tab-bar">
-    <button class="active" id="tab-credit" onclick="switchTab('credit')">信用卡</button>
-    <button id="tab-debit" onclick="switchTab('debit')">借记卡</button>
+    <button class="active" id="tab-credit" onclick="switchTab('credit')">信用卡交易查询</button>
+    <button id="tab-debit" onclick="switchTab('debit')">借记卡交易查询</button>
+    <button id="tab-cards" onclick="switchTab('cards')">卡片管理</button>
   </div>
 
   <!-- ====== 信用卡 ====== -->
@@ -357,14 +358,6 @@
       <button class="btn btn-ai" onclick="doAiSearch()">🚀 AI查询</button>
     </div>
     <div id="ai-msg"></div>
-  </div>
-
-  <!-- 卡片信息 -->
-  <div class="panel" id="card-info-panel" style="display:none;">
-    <div class="panel-title" style="cursor:pointer;user-select:none;" onclick="toggleCardInfo()">
-      💳 我的卡片 <span id="card-info-toggle" style="font-size:12px;color:#999;">▼</span>
-    </div>
-    <div id="card-info-body"></div>
   </div>
 
   <!-- 结果 -->
@@ -971,7 +964,12 @@ function debitBankName(code) {
     BOC:'中国银行', BOCOM:'交通银行', CMB:'招商银行', COMM:'交通银行',
     SPDB:'浦发银行', CEB:'光大银行', CMBC:'民生银行', CITIC:'中信银行',
     CGB:'广发银行', CZB:'浙商银行', PAB:'平安银行', NBC:'宁波银行',
-    BOSH:'上海银行', SRCB:'上海农商行', PSBC:'邮储银行'};
+    BOSH:'上海银行', SRCB:'上海农商行', PSBC:'邮储银行',
+    HXB:'华夏银行', HZBK:'杭州银行', WZBK:'温州银行', NJBK:'南京银行',
+    BJBK:'北京银行', CIB:'兴业银行',
+    JSBK:'江苏银行', GZRCB:'广州农商行', GZCB:'广州银行', BBWB:'北部湾银行',
+    SCB:'四川银行', SZBK:'苏州银行', XIB:'厦门国际银行',
+    WBK:'微众银行', XWBK:'新网银行'};
   return names[code] || code;
 }
 
@@ -979,12 +977,15 @@ function debitBankName(code) {
 function switchTab(tab) {
   document.getElementById('tab-credit').classList.toggle('active', tab === 'credit');
   document.getElementById('tab-debit').classList.toggle('active', tab === 'debit');
+  document.getElementById('tab-cards').classList.toggle('active', tab === 'cards');
   document.getElementById('credit-section').style.display = tab === 'credit' ? '' : 'none';
   document.getElementById('debit-section').style.display = tab === 'debit' ? '' : 'none';
+  document.getElementById('cards-section').style.display = tab === 'cards' ? '' : 'none';
   if (tab === 'debit') {
     loadDebitMeta();
     if (!dCurrentTotal) doDebitSearch(0);
   }
+  if (tab === 'cards') loadCardInfo();
 }
 
 // ============ 借记卡查询 ============
@@ -1220,6 +1221,43 @@ loadMeta();
   </div>
 </div>
 
+<!-- ====== 卡片管理 ====== -->
+<div id="cards-section" style="display:none;">
+  <div class="panel">
+    <div class="panel-title">💳 卡片管理</div>
+    <div class="form-row" style="margin-bottom:10px;">
+      <div class="form-group">
+        <label>姓名</label>
+        <input type="text" id="cf-name" placeholder="输入" style="padding:6px;border:1px solid #ccc;border-radius:6px;font-size:13px;width:100%;box-sizing:border-box;">
+      </div>
+      <div class="form-group">
+        <label>银行</label>
+        <input type="text" id="cf-bank" placeholder="输入" style="padding:6px;border:1px solid #ccc;border-radius:6px;font-size:13px;width:100%;box-sizing:border-box;">
+      </div>
+      <div class="form-group">
+        <label>类型</label>
+        <select id="cf-type" onchange="onCardTypeChange()" style="padding:6px;border:1px solid #ccc;border-radius:6px;font-size:13px;width:100%;box-sizing:border-box;">
+          <option value="">全部</option>
+          <option value="credit">信用卡</option>
+          <option value="debit">借记卡</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>卡种</label>
+        <select id="cf-class" style="padding:6px;border:1px solid #ccc;border-radius:6px;font-size:13px;width:100%;box-sizing:border-box;">
+          <option value="">全部</option>
+          <option value="一类卡">一类卡</option>
+          <option value="二类卡">二类卡</option>
+        </select>
+      </div>
+      <div class="form-group" style="align-self:flex-end;">
+        <button class="btn btn-primary" onclick="loadCardInfo()" style="padding:6px 14px;">🔍 查询</button>
+      </div>
+    </div>
+    <div id="card-info-body"></div>
+  </div>
+</div>
+
 <style>
 .card-info-table { width:100%; border-collapse:collapse; font-size:13px; }
 .card-info-table th { background:#f3f4f6; padding:8px 6px; text-align:left; border-bottom:2px solid #d1d5db; font-weight:600; }
@@ -1231,40 +1269,51 @@ loadMeta();
 <script>
 let _cardInfoLoaded = false;
 
+function cf(id) { const e=document.getElementById('cf-'+id); return e?e.value:''; }
+
+function onCardTypeChange() {
+  const cls = document.getElementById('cf-class');
+  const tr = cls.closest('.form-group');
+  tr.style.display = cf('type') === 'debit' ? '' : 'none';
+  if (cf('type') !== 'debit') cls.value = '';
+}
+
 async function loadCardInfo() {
-  if (_cardInfoLoaded) return;
+  _cardInfoLoaded = true;
   try {
-    const cards = await api('/api/card-info');
-    if (!cards || cards.length === 0) return;
-    _cardInfoLoaded = true;
-    const panel = document.getElementById('card-info-panel');
+    var params = new URLSearchParams();
+    if (cf('name')) params.set('cardholder', cf('name'));
+    if (cf('bank')) params.set('bank_code', cf('bank'));
+    if (cf('type')) params.set('account_type', cf('type'));
+    if (cf('class')) params.set('card_class', cf('class'));
+    const cards = await api('/api/card-info?' + params.toString());
     const body = document.getElementById('card-info-body');
-    panel.style.display = '';
-    let html = '<table class="card-info-table"><thead><tr><th>银行</th><th>卡号</th><th>尾号</th><th>类型</th><th>持卡人</th><th>说明</th></tr></thead><tbody>';
+    if (!cards || cards.length === 0) {
+      body.innerHTML = '<div style="padding:20px;text-align:center;color:#999;">无匹配卡片</div>';
+      return;
+    }
+    let html = '<table class="card-info-table"><thead><tr><th>类型</th><th>银行</th><th>卡号</th><th>尾号</th><th>卡种</th><th>归属地</th><th>持卡人</th><th>额度</th><th>说明</th></tr></thead><tbody>';
+    var curType = '';
     for (const c of cards) {
+      var typeLabel = c.account_type === 'debit' ? '借记卡' : '信用卡';
+      if (curType !== typeLabel) {
+        curType = typeLabel;
+        html += '<tr style="background:#f0fdf4;"><td colspan="9" style="font-weight:700;padding:8px 6px;font-size:14px;">'+typeLabel+'</td></tr>';
+      }
       const cat = c.card_category ? '<span class="cat-tag">'+c.card_category+'</span>' : '';
       const num = '**** **** **** '+c.card_last4;
-      html += '<tr><td>'+debitBankName(c.bank_code)+'</td><td style="font-family:monospace;">'+num+'</td><td style="font-family:monospace;">'+c.card_last4+'</td><td>'+cat+'</td><td>'+c.cardholder+'</td><td style="color:#6b7280;font-size:12px;">'+(c.fee_desc||'')+'</td></tr>';
+      const limit = c.credit_limit ? (c.credit_limit/10000).toFixed(c.credit_limit%10000?1:0)+'万' : '';
+      var cls = '', loc = '', desc = c.fee_desc||'';
+      if (c.account_type === 'debit') {
+        cls = c.card_class||''; loc = c.location||'';
+        if (c.linked_card) desc = c.linked_card;
+      }
+      html += '<tr><td style="font-size:11px;color:#6b7280;">'+typeLabel+'</td><td>'+debitBankName(c.bank_code)+'</td><td style="font-family:monospace;">'+num+'</td><td style="font-family:monospace;">'+c.card_last4+'</td><td>'+cls+'</td><td>'+loc+'</td><td>'+c.cardholder+'</td><td style="font-weight:600;">'+limit+'</td><td style="color:#6b7280;font-size:12px;">'+desc+'</td></tr>';
     }
     html += '</tbody></table>';
     body.innerHTML = html;
   } catch(e) { console.error(e); }
 }
-
-function toggleCardInfo() {
-  const body = document.getElementById('card-info-body');
-  const toggle = document.getElementById('card-info-toggle');
-  if (body.style.display === 'none') {
-    body.style.display = '';
-    toggle.textContent = '▼';
-  } else {
-    body.style.display = 'none';
-    toggle.textContent = '▶';
-  }
-}
-
-// 页面加载完成后调用
-loadCardInfo();
 </script>
 
 </body>
