@@ -442,8 +442,6 @@ async function api(url) {
 let _banks = []; // 全部银行数据（含持卡人）
 
 async function loadMeta() {
-  // 加载卡片信息
-  loadCardInfo();
   try {
     const [cardholders, banks, currencies] = await Promise.all([
       api('/api/cardholders'),
@@ -1264,6 +1262,9 @@ function toggleCardInfo() {
     toggle.textContent = '▶';
   }
 }
+
+// 页面加载完成后调用
+loadCardInfo();
 </script>
 
 </body>
