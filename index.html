@@ -959,7 +959,7 @@ function esc(s) {
 }
 
 function debitBankName(code) {
-  const names = {HRB:'哈尔滨银行', ICBC:'工商银行', CCB:'建设银行', ABC:'农业银行',
+  const names = {HRB:'华瑞银行', ICBC:'工商银行', CCB:'建设银行', ABC:'农业银行',
     BOC:'中国银行', BOCOM:'交通银行', CMB:'招商银行', COMM:'交通银行',
     SPDB:'浦发银行', CEB:'光大银行', CMBC:'民生银行', CITIC:'中信银行',
     CGB:'广发银行', CZB:'浙商银行', PAB:'平安银行', NBC:'宁波银行',
@@ -973,19 +973,50 @@ function switchTab(tab) {
   document.getElementById('tab-debit').classList.toggle('active', tab === 'debit');
   document.getElementById('credit-section').style.display = tab === 'credit' ? '' : 'none';
   document.getElementById('debit-section').style.display = tab === 'debit' ? '' : 'none';
-  if (tab === 'debit' && !dCurrentTotal) doDebitSearch(0);
+  if (tab === 'debit') {
+    loadDebitMeta();
+    if (!dCurrentTotal) doDebitSearch(0);
+  }
 }
 
 // ============ 借记卡查询 ============
 let dPageSize = 50;
 let dCurrentTotal = 0;
+let _debitLoaded = false;
 
 function fDebit(id) { const e=document.getElementById(id); return e?e.value:''; }
+
+async function loadDebitMeta() {
+  if (_debitLoaded) return;
+  _debitLoaded = true;
+  try {
+    const [names, banks, last4s] = await Promise.all([
+      api('/api/debit/account-names'),
+      api('/api/debit/banks'),
+      api('/api/debit/account-last4s'),
+    ]);
+    fillSelect('d-name', [{v:'',t:'全部'}, ...names.map(n=>({v:n,t:n}))]);
+    fillSelect('d-bank', [{v:'',t:'全部'}, ...banks.map(b=>({v:b,t:debitBankName(b)}))]);
+    fillSelect('d-last4', [{v:'',t:'全部'}, ...last4s.map(l=>({v:l,t:l}))]);
+  } catch(e) { console.error(e); }
+}
+
+// 银行变更时刷新尾号
+function onDebitBankChange() {
+  const bk = document.getElementById('d-bank').value;
+  const url = bk ? '/api/debit/account-last4s?bank_code=' + encodeURIComponent(bk) : '/api/debit/account-last4s';
+  api(url).then(last4s => {
+    fillSelect('d-last4', [{v:'',t:'全部'}, ...last4s.map(l=>({v:l,t:l}))]);
+  }).catch(() => {});
+}
 
 async function doDebitSearch(page) {
   const params = new URLSearchParams();
   params.set('size', dPageSize);
   params.set('page', page);
+  if (fDebit('d-name')) params.set('account_name', fDebit('d-name'));
+  if (fDebit('d-bank')) params.set('bank_code', fDebit('d-bank'));
+  if (fDebit('d-last4')) params.set('account_last4', fDebit('d-last4'));
   if (fDebit('d-start')) params.set('start_date', fDebit('d-start'));
   if (fDebit('d-end')) params.set('end_date', fDebit('d-end'));
   if (fDebit('d-keyword')) params.set('keyword', fDebit('d-keyword'));
@@ -996,7 +1027,7 @@ async function doDebitSearch(page) {
     renderDebitTable(data);
     renderDebitPager(page);
   } catch(e) {
-    document.getElementById('d-result-body').innerHTML = '<tr><td colspan="10" class="error-msg">请求失败: ' + e.message + '</td></tr>';
+    document.getElementById('d-result-body').innerHTML = '<tr><td colspan="11" class="error-msg">请求失败: ' + e.message + '</td></tr>';
   }
 }
 
@@ -1013,7 +1044,7 @@ function renderDebitTable(data) {
   }
 
   if (!rows.length) {
-    document.getElementById('d-result-body').innerHTML = '<tr><td colspan="10" style="text-align:center;color:#9ca3af;padding:30px;">暂无数据</td></tr>';
+    document.getElementById('d-result-body').innerHTML = '<tr><td colspan="11" style="text-align:center;color:#9ca3af;padding:30px;">暂无数据</td></tr>';
     return;
   }
 
@@ -1026,6 +1057,7 @@ function renderDebitTable(data) {
     return '<tr>' +
       '<td>' + bankName + '</td>' +
       '<td>' + last4 + '</td>' +
+      '<td>' + esc(r.account_name||'') + '</td>' +
       '<td>' + r.trans_date + '</td>' +
       '<td>' + type + '</td>' +
       '<td title="' + esc(r.description) + '">' + esc(r.description) + '</td>' +
@@ -1050,12 +1082,15 @@ function renderDebitPager(currentPage) {
 }
 
 function resetDebitFilters() {
-  ['d-start','d-end','d-keyword'].forEach(function(id){ document.getElementById(id).value = ''; });
+  ['d-name','d-bank','d-last4','d-start','d-end','d-keyword'].forEach(function(id){ document.getElementById(id).value = ''; });
   doDebitSearch(0);
 }
 
 function debitExportExcel() {
   var params = new URLSearchParams();
+  if (fDebit('d-name')) params.set('account_name', fDebit('d-name'));
+  if (fDebit('d-bank')) params.set('bank_code', fDebit('d-bank'));
+  if (fDebit('d-last4')) params.set('account_last4', fDebit('d-last4'));
   if (fDebit('d-start')) params.set('start_date', fDebit('d-start'));
   if (fDebit('d-end')) params.set('end_date', fDebit('d-end'));
   if (fDebit('d-keyword')) params.set('keyword', fDebit('d-keyword'));
@@ -1119,6 +1154,18 @@ loadMeta();
     <div class="panel-title">🔍 借记卡查询</div>
     <div class="form-row">
       <div class="form-group">
+        <label>姓名</label>
+        <select id="d-name"><option value="">全部</option></select>
+      </div>
+      <div class="form-group">
+        <label>银行</label>
+        <select id="d-bank" onchange="onDebitBankChange()"><option value="">全部</option></select>
+      </div>
+      <div class="form-group">
+        <label>尾号</label>
+        <select id="d-last4"><option value="">全部</option></select>
+      </div>
+      <div class="form-group">
         <label>起始日期</label>
         <input type="date" id="d-start">
       </div>
@@ -1147,6 +1194,7 @@ loadMeta();
           <tr>
             <th>银行</th>
             <th>尾号</th>
+            <th>姓名</th>
             <th>日期</th>
             <th>交易类型</th>
             <th>摘要</th>

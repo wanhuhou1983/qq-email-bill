@@ -74,3 +74,28 @@ def get_stats():
                 "date_range": {"from": dr[0].isoformat() if dr[0] else None, "to": dr[1].isoformat() if dr[1] else None}}
     finally:
         cur.close(); conn.close()
+
+
+@router.get("/debit/account-names")
+def get_debit_account_names():
+    conn = get_conn(); cur = conn.cursor()
+    try:
+        cur.execute("SELECT DISTINCT account_name FROM debit_card_transactions WHERE account_name IS NOT NULL AND account_name != '' ORDER BY account_name")
+        return [r[0] for r in cur.fetchall()]
+    finally:
+        cur.close(); conn.close()
+
+
+@router.get("/debit/account-last4s")
+def get_debit_account_last4s(bank_code: Optional[str] = Query(None)):
+    conn = get_conn(); cur = conn.cursor()
+    try:
+        sql = "SELECT DISTINCT RIGHT(account_number, 4) FROM debit_card_transactions"
+        vals = []
+        if bank_code:
+            sql += " WHERE bank_code = %s"; vals.append(bank_code)
+        sql += " ORDER BY 1"
+        cur.execute(sql, vals)
+        return [r[0] for r in cur.fetchall()]
+    finally:
+        cur.close(); conn.close()

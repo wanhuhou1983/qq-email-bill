@@ -258,6 +258,8 @@ def debit_search(
     end_date: Optional[date] = Query(None),
     keyword: Optional[str] = Query(None),
     counterparty_name: Optional[str] = Query(None),
+    account_name: Optional[str] = Query(None),
+    account_last4: Optional[str] = Query(None),
 ):
     conditions = []
     values = []
@@ -278,6 +280,10 @@ def debit_search(
     if counterparty_name:
         conditions.append("AND counterparty_name ILIKE %s")
         values.append(f"%{counterparty_name}%")
+    if account_name:
+        conditions.append("AND account_name = %s"); values.append(account_name)
+    if account_last4:
+        conditions.append("AND account_number LIKE %s"); values.append(f"%{account_last4}")
 
     where = " ".join(conditions)
     offset = page * size
@@ -297,7 +303,8 @@ def debit_search(
             return DebitSearchResult(total=total, sum_income=sum_income, sum_expense=sum_expense, transactions=[])
 
         cur.execute(f"""
-            SELECT id, bank_code, account_number, trans_date, description,
+            SELECT id, bank_code, account_number, COALESCE(account_name,'') as account_name,
+                   trans_date, description,
                    debit, credit, balance, amount,
                    COALESCE(counterparty_name,'') as counterparty_name,
                    COALESCE(counterparty_bank,'') as counterparty_bank,

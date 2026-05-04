@@ -31,6 +31,7 @@ class DebitTransactionItem(BaseModel):
     id: int
     bank_code: str
     account_number: str
+    account_name: str = ''
     trans_date: date
     description: str
     debit: float = 0
