@@ -25,7 +25,7 @@ def get_ai_client() -> OpenAI:
     )
 
 
-def validate_ai_sql(raw: str) -> str:
+def validate_ai_sql(raw: str, table: str = "credit_card_transactions") -> str:
     sql = raw.strip()
 
     # 提取 ```sql ... ``` 块（模型可能输出中文解释+SQL）
@@ -55,8 +55,9 @@ def validate_ai_sql(raw: str) -> str:
         raise HTTPException(status_code=400, detail="AI SQL 包含危险关键字")
     if any(t in upper for t in banned_tokens):
         raise HTTPException(status_code=400, detail="AI SQL 包含不允许的结构")
-    if "CREDIT_CARD_TRANSACTIONS" not in upper:
-        raise HTTPException(status_code=400, detail="AI SQL 必须查询 credit_card_transactions")
+    table_upper = table.upper()
+    if table_upper not in upper:
+        raise HTTPException(status_code=400, detail=f"AI SQL 必须查询 {table}")
     if "JOIN " in upper or "WITH " in upper:
         raise HTTPException(status_code=400, detail="AI SQL 暂不允许 JOIN 或 CTE")
 
@@ -149,7 +150,8 @@ def daily(
             SELECT t.trans_date,
                    COALESCE(SUM(CASE WHEN t.amount > 0 THEN t.amount ELSE 0 END), 0) as spend,
                    COALESCE(SUM(CASE WHEN t.amount < 0 THEN ABS(t.amount) ELSE 0 END), 0) as repay,
-                   COUNT(*) as count
+                   COUNT(*) as count,
+                   JSON_AGG(JSON_BUILD_OBJECT('bank_code', t.bank_code, 'description', t.description, 'amount', t.amount) ORDER BY t.trans_date, t.id) as txns
             FROM credit_card_transactions t
             WHERE 1=1 {where_sql}
             GROUP BY t.trans_date
@@ -158,7 +160,8 @@ def daily(
         daily = [{"date": r[0].isoformat() if hasattr(r[0], 'isoformat') else str(r[0]),
                    "spend": float(r[1]),
                    "repay": float(r[2]),
-                   "count": r[3]} for r in cur.fetchall()]
+                   "count": r[3],
+                   "txns": r[4] if r[4] else []} for r in cur.fetchall()]
         return {"daily": daily}
     finally:
         cur.close(); conn.close()
@@ -235,6 +238,82 @@ def ai_search(
             "total": total,
             "sum_spend": sum_spend,
             "sum_repay": sum_repay,
+            "transactions": [row_to_dict(r, cols) for r in rows],
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"SQL 执行失败: {str(e)}")
+    finally:
+        cur.close(); conn.close()
+
+
+@router.get("/debit/ai-search")
+def debit_ai_search(
+    q: str = Query(..., description="自然语言查询"),
+    page: int = Query(0, ge=0),
+    size: int = Query(20, ge=1, le=200),
+):
+    offset = page * size
+    conn = get_reader_conn(); cur = conn.cursor()
+    try:
+        cur.execute("SELECT column_name, data_type FROM information_schema.columns WHERE table_name = 'debit_card_transactions' ORDER BY ordinal_position")
+        schema = "\n".join([f"  {c[0]}: {c[1]}" for c in cur.fetchall()])
+    finally:
+        cur.close(); conn.close()
+
+    prompt = f"""你是一个 PostgreSQL 查询生成器。根据用户的自然语言查询，生成 SQL 查询。
+
+数据库表名: debit_card_transactions（简称 dct）
+列结构:
+{schema}
+
+规则:
+- amount > 0 收入, amount < 0 支出
+- debit 是支出金额（正数）, credit 是收入金额（正数）
+- 表名必须是 debit_card_transactions，不要用简称或缩写
+- 只能用 SELECT * 查询明细记录，不允许 SELECT 指定字段，不允许聚合函数
+- 排序用 ORDER BY trans_date DESC
+- LIMIT 最大 500 条
+
+只输出 SQL 代码，不要任何解释。"""
+
+    client = get_ai_client()
+    response = client.chat.completions.create(
+        model="deepseek-chat",
+        messages=[{"role": "system", "content": prompt}, {"role": "user", "content": q}],
+        temperature=0,
+    )
+
+    sql = validate_ai_sql(response.choices[0].message.content, table="debit_card_transactions")
+
+    conn = get_reader_conn(); cur = conn.cursor()
+    try:
+        cur.execute(f"SELECT COUNT(*) FROM ({sql}) AS sub")
+        total = cur.fetchone()[0]
+
+        paged_sql = f"SELECT * FROM ({sql}) AS sub LIMIT {size} OFFSET {offset}"
+        cur.execute(paged_sql)
+        if cur.description is None:
+            raise HTTPException(status_code=400, detail="AI SQL 无法返回结果")
+        cols = [desc[0] for desc in cur.description]
+        rows = cur.fetchall()
+
+        sum_income = 0.0; sum_expense = 0.0
+        if "amount" in [c.lower() for c in cols]:
+            try:
+                cur.execute(f"""SELECT COALESCE(SUM(CASE WHEN sub.amount > 0 THEN sub.amount ELSE 0 END), 0),
+                                       COALESCE(SUM(CASE WHEN sub.amount < 0 THEN ABS(sub.amount) ELSE 0 END), 0)
+                                FROM ({sql}) AS sub""")
+                s = cur.fetchone()
+                sum_income = float(s[0]); sum_expense = float(s[1])
+            except:
+                pass
+
+        return {
+            "total": total,
+            "sum_income": sum_income,
+            "sum_expense": sum_expense,
             "transactions": [row_to_dict(r, cols) for r in rows],
         }
     except HTTPException:
@@ -329,6 +408,48 @@ def debit_banks():
         cur.close(); conn.close()
 
 
+@router.get("/debit/daily")
+def debit_daily(
+    start_date: Optional[date] = Query(None),
+    end_date: Optional[date] = Query(None),
+    bank_code: Optional[str] = Query(None),
+    keyword: Optional[str] = Query(None),
+):
+    conditions = ["1=1"]; values = []
+    if start_date:
+        conditions.append("AND trans_date >= %s"); values.append(start_date)
+    if end_date:
+        conditions.append("AND trans_date <= %s"); values.append(end_date)
+    if bank_code:
+        conditions.append("AND bank_code = %s"); values.append(bank_code)
+    if keyword:
+        conditions.append("AND (counterparty_name ILIKE %s OR description ILIKE %s)")
+        values.append(f"%{keyword}%"); values.append(f"%{keyword}%")
+
+    where = " ".join(conditions)
+    conn = get_reader_conn(); cur = conn.cursor()
+    try:
+        cur.execute(f"""
+            SELECT trans_date,
+                   COALESCE(SUM(CASE WHEN amount < 0 THEN ABS(amount) ELSE 0 END), 0) as expense,
+                   COALESCE(SUM(CASE WHEN amount > 0 THEN amount ELSE 0 END), 0) as income,
+                   COUNT(*) as count,
+                   JSON_AGG(JSON_BUILD_OBJECT('bank_code', bank_code, 'description', COALESCE(description,''), 'amount', amount) ORDER BY trans_date, id) as txns
+            FROM debit_card_transactions
+            WHERE {where}
+            GROUP BY trans_date
+            ORDER BY trans_date
+        """, values)
+        daily = [{"date": r[0].isoformat() if hasattr(r[0], 'isoformat') else str(r[0]),
+                   "expense": float(r[1]),
+                   "income": float(r[2]),
+                   "count": r[3],
+                   "txns": r[4] if r[4] else []} for r in cur.fetchall()]
+        return {"daily": daily}
+    finally:
+        cur.close(); conn.close()
+
+
 @router.get("/bill-cycles")
 def bill_cycles(cardholder: Optional[str] = Query(None), bank_code: Optional[str] = Query(None),
                 bank: Optional[str] = Query(None)):
@@ -386,6 +507,167 @@ def bill_cycles(cardholder: Optional[str] = Query(None), bank_code: Optional[str
             })
 
         return {"bills": bills, "cycles": []}
+    finally:
+        cur.close(); conn.close()
+
+
+# ============ 京东交易查询 ============
+
+@router.get("/jd/types")
+def jd_types():
+    conn = get_reader_conn(); cur = conn.cursor()
+    try:
+        cur.execute("SELECT DISTINCT income_expense FROM jd_transactions ORDER BY income_expense")
+        return [r[0] for r in cur.fetchall()]
+    finally:
+        cur.close(); conn.close()
+
+
+@router.get("/jd/search")
+def jd_search(
+    page: int = Query(0, ge=0),
+    size: int = Query(50, ge=0, le=200),
+    platform: Optional[str] = Query(None),
+    phone: Optional[str] = Query(None),
+    income_expense: Optional[str] = Query(None),
+    bank_name: Optional[str] = Query(None),
+    keyword: Optional[str] = Query(None),
+    min_amount: Optional[float] = Query(None),
+    max_amount: Optional[float] = Query(None),
+    start_date: Optional[date] = Query(None),
+    end_date: Optional[date] = Query(None),
+):
+    conditions = []; values = []
+    if platform:
+        conditions.append("AND platform = %s"); values.append(platform)
+    if phone:
+        conditions.append("AND phone = %s"); values.append(phone)
+    if income_expense:
+        conditions.append("AND income_expense = %s"); values.append(income_expense)
+    if bank_name:
+        conditions.append("AND bank_name ILIKE %s"); values.append(f"%{bank_name}%")
+    if keyword:
+        conditions.append("AND (description ILIKE %s OR merchant_name ILIKE %s)")
+        values.append(f"%{keyword}%"); values.append(f"%{keyword}%")
+    if min_amount is not None:
+        conditions.append("AND amount >= %s"); values.append(min_amount)
+    if max_amount is not None:
+        conditions.append("AND amount <= %s"); values.append(max_amount)
+    if start_date:
+        conditions.append("AND trans_time >= %s"); values.append(start_date)
+    if end_date:
+        conditions.append("AND trans_time <= %s"); values.append(end_date)
+
+    where = " ".join(conditions)
+    offset = page * size
+
+    conn = get_reader_conn(); cur = conn.cursor()
+    try:
+        cur.execute(f"""SELECT COALESCE(SUM(CASE WHEN income_expense='\u652f\u51fa' THEN amount ELSE 0 END), 0),
+                               COALESCE(SUM(CASE WHEN income_expense='\u6536\u5165' THEN amount ELSE 0 END), 0),
+                               COALESCE(SUM(CASE WHEN income_expense='\u4e0d\u8ba1\u6536\u652f' THEN amount ELSE 0 END), 0)
+                        FROM jd_transactions WHERE 1=1 {where}""", values)
+        s = cur.fetchone()
+        sum_expense = float(s[0]); sum_income = float(s[1]); sum_neutral = float(s[2])
+
+        cur.execute(f"SELECT COUNT(*) FROM jd_transactions WHERE 1=1 {where}", values)
+        total = cur.fetchone()[0]
+
+        if size == 0:
+            return {"total": total, "sum_income": sum_income, "sum_expense": sum_expense, "sum_neutral": sum_neutral, "transactions": []}
+
+        cur.execute(f"""SELECT id, trans_time, merchant_name, description, amount,
+                        payment_method, status, income_expense, category,
+                        COALESCE(bank_name,'') as bank_name, COALESCE(card_last4,'') as card_last4,
+                        COALESCE(platform,'') as platform
+                        FROM jd_transactions WHERE 1=1 {where}
+                        ORDER BY trans_time DESC LIMIT {size} OFFSET {offset}""", values)
+        cols = [desc[0] for desc in cur.description]
+        rows = cur.fetchall()
+
+        return {
+            "total": total, "sum_income": sum_income, "sum_expense": sum_expense,
+            "sum_neutral": sum_neutral,
+            "transactions": [row_to_dict(r, cols) for r in rows],
+        }
+    finally:
+        cur.close(); conn.close()
+
+
+@router.get("/jd/ai-search")
+def jd_ai_search(
+    q: str = Query(..., description="自然语言查询"),
+    page: int = Query(0, ge=0),
+    size: int = Query(50, ge=1, le=200),
+):
+    offset = page * size
+    conn = get_reader_conn(); cur = conn.cursor()
+    try:
+        cur.execute("SELECT column_name, data_type FROM information_schema.columns WHERE table_name = 'jd_transactions' ORDER BY ordinal_position")
+        schema = "\n".join([f"  {c[0]}: {c[1]}" for c in cur.fetchall()])
+    finally:
+        cur.close(); conn.close()
+
+    prompt = f"""你是一个 PostgreSQL 查询生成器。根据用户的自然语言查询，生成 SQL 查询。
+
+数据库表名: jd_transactions（简称 jd）
+列结构:
+{schema}
+
+规则:
+- income_expense: 支出/收入/不计收支
+- amount 统一为正数
+- 表名必须是 jd_transactions，不要用简称或缩写
+- 只能用 SELECT * 查询明细记录，不允许 SELECT 指定字段，不允许聚合函数
+- 排序用 ORDER BY trans_time DESC
+- LIMIT 最大 500 条
+- 金额条件用 amount
+- 用户说"消费" "支出" → income_expense='\u652f\u51fa'
+- 用户说"退款" → income_expense='\u4e0d\u8ba1\u6536\u652f'
+
+只输出 SQL 代码，不要任何解释。"""
+
+    client = get_ai_client()
+    response = client.chat.completions.create(
+        model="deepseek-chat",
+        messages=[{"role": "system", "content": prompt}, {"role": "user", "content": q}],
+        temperature=0,
+    )
+
+    sql = validate_ai_sql(response.choices[0].message.content, table="jd_transactions")
+
+    conn = get_reader_conn(); cur = conn.cursor()
+    try:
+        cur.execute(f"SELECT COUNT(*) FROM ({sql}) AS sub")
+        total = cur.fetchone()[0]
+
+        paged_sql = f"SELECT * FROM ({sql}) AS sub LIMIT {size} OFFSET {offset}"
+        cur.execute(paged_sql)
+        if cur.description is None:
+            raise HTTPException(status_code=400, detail="AI SQL 无法返回结果")
+        cols = [desc[0] for desc in cur.description]
+        rows = cur.fetchall()
+
+        sum_income = 0.0; sum_expense = 0.0; sum_neutral = 0.0
+        try:
+            cur.execute(f"""SELECT COALESCE(SUM(CASE WHEN income_expense='\u652f\u51fa' THEN amount ELSE 0 END), 0),
+                                   COALESCE(SUM(CASE WHEN income_expense='\u6536\u5165' THEN amount ELSE 0 END), 0),
+                                   COALESCE(SUM(CASE WHEN income_expense='\u4e0d\u8ba1\u6536\u652f' THEN amount ELSE 0 END), 0)
+                            FROM ({sql}) AS sub""")
+            s = cur.fetchone()
+            sum_expense = float(s[0]); sum_income = float(s[1]); sum_neutral = float(s[2])
+        except:
+            pass
+
+        return {
+            "total": total, "sum_income": sum_income, "sum_expense": sum_expense,
+            "sum_neutral": sum_neutral,
+            "transactions": [row_to_dict(r, cols) for r in rows],
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"SQL 执行失败: {str(e)}")
     finally:
         cur.close(); conn.close()
 

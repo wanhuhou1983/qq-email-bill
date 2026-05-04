@@ -84,6 +84,11 @@
   .pagination button { padding: 6px 14px; border: 1px solid var(--border); background: #fff; border-radius: 6px; cursor: pointer; font-size: 13px; }
   .pagination button:disabled { opacity: 0.4; cursor: not-allowed; }
   .pagination .page-info { font-size: 13px; color: var(--text-secondary); }
+  .pager { display: flex; gap: 8px; align-items: center; justify-content: center; margin-top: 16px; flex-wrap:wrap; }
+  .pager button { padding: 6px 14px; border: 1px solid var(--border); background: #fff; border-radius: 6px; cursor: pointer; font-size: 13px; }
+  .pager button:disabled { opacity: 0.4; cursor: not-allowed; }
+  .pager .page-info { font-size: 13px; color: var(--text-secondary); }
+  .pager .page-jump { font-size:13px; color:#6b7280; margin-left:8px; display:inline-flex; align-items:center; gap:4px; }
 
   /* Error/loading */
   .error-msg { background: #fef2f2; border: 1px solid #fecaca; color: #dc2626; padding: 12px 16px; border-radius: var(--radius); margin-top: 10px; font-size: 13px; }
@@ -143,7 +148,7 @@
     border-radius:0;
   }
   .tab-bar button:first-child { border-radius:8px 0 0 8px; }
-  .tab-bar button:nth-child(3) { border-radius:0 8px 8px 0; }
+  .tab-bar button:nth-child(4) { border-radius:0 8px 8px 0; }
   .tab-bar button.active { background:var(--primary); color:#fff; border-color:var(--primary); }
 
   /* 账期下拉 - 账单列表版 */
@@ -187,7 +192,7 @@
   .cal-grid { display:grid; grid-template-columns:repeat(7,1fr); gap:4px; }
   .cal-grid .cal-day-header { text-align:center; font-size:12px; font-weight:600; color:#6b7280; padding:6px 0; }
   .cal-cell {
-    border:1px solid #e5e7eb; border-radius:6px; padding:4px; min-height:115px;
+    border:1px solid #e5e7eb; border-radius:6px; padding:4px; min-height:155px;
     background:#fff; position:relative; display:flex; flex-direction:column;
   }
   .cal-cell.other-month { background:#f9fafb; }
@@ -197,13 +202,38 @@
   .cal-cell .cal-bar { flex:1; border-radius:2px 2px 0 0; min-height:1px; transition:height .2s; }
   .cal-cell .cal-bar.red { background:linear-gradient(to top,#dc2626,#fca5a5); }
   .cal-cell .cal-bar.green { background:linear-gradient(to top,#16a34a,#86efac); }
-  .cal-cell .cal-amounts { font-size:11px; line-height:1.4; margin-top:2px; }
+  .cal-cell .cal-unit-grid { display:grid; grid-template-columns:repeat(5,1fr); gap:3px; margin:6px 0; }
+  .cal-cell .cal-unit { aspect-ratio:1; border-radius:3px; border:1px solid #d1d5db; background:#f9fafb; min-height:14px; position:relative; overflow:hidden; }
+  .cal-cell .cal-unit .cal-unit-fill { position:absolute; bottom:0; left:0; right:0; border-radius:0 0 2px 2px; transition:height .15s; }
+  .cal-cell .cal-unit .cal-unit-fill.red { background:#dc2626; }
+  .cal-cell .cal-unit .cal-unit-fill.green { background:#16a34a; }
+  .cal-cell .cal-unit .cal-unit-fill.e1 { background:#991b1b; }
+  .cal-cell .cal-unit .cal-unit-fill.e2 { background:#dc2626; }
+  .cal-cell .cal-unit .cal-unit-fill.e3 { background:#f87171; }
+  .cal-cell .cal-unit .cal-unit-fill.e4 { background:#fca5a5; }
+  .cal-cell .cal-unit .cal-unit-fill.e5 { background:#fecaca; }
+  .cal-cell .cal-unit .cal-unit-fill.i1 { background:#14532d; }
+  .cal-cell .cal-unit .cal-unit-fill.i2 { background:#16a34a; }
+  .cal-cell .cal-unit .cal-unit-fill.i3 { background:#4ade80; }
+  .cal-cell .cal-unit .cal-unit-fill.i4 { background:#86efac; }
+  .cal-cell .cal-unit .cal-unit-fill.i5 { background:#bbf7d0; }
+  .cal-cell .cal-unit.max { border-color:#991b1b; }
+  .cal-cell .cal-unit.max::after { content:'MAX'; position:absolute; top:1px; left:50%; transform:translateX(-50%); font-size:7px; font-weight:700; color:#fff; background:#991b1b; padding:0 2px; border-radius:2px; line-height:1.3; white-space:nowrap; z-index:2; }
+  .cal-cell .cal-amounts { font-size:16px; line-height:1.6; margin-top:4px; }
   .cal-cell .cal-spend { color:#dc2626; font-weight:600; }
   .cal-cell .cal-repay { color:#16a34a; font-weight:600; }
   .cal-cell.no-data .cal-date { color:#d1d5db; }
-  .cal-cell.no-data .cal-bars { visibility:hidden; }
+  .cal-cell.no-data .cal-unit-grid { opacity:0.3; }
   .cal-cell.no-data .cal-amounts { visibility:hidden; }
   .cal-cell.today { border-color:var(--primary); box-shadow:0 0 0 2px rgba(37,99,235,0.15); }
+  .cal-cell { cursor:pointer; }
+  .cal-cell:hover { background:#f5f5ff; }
+  .cal-popup { position:fixed; z-index:9999; background:#fff; border:1px solid #e5e7eb; border-radius:10px; box-shadow:0 8px 32px rgba(0,0,0,0.15); padding:16px; max-width:500px; max-height:400px; overflow-y:auto; display:none; }
+  .cal-popup.show { display:block; }
+  .cal-popup table { width:100%; border-collapse:collapse; font-size:12px; }
+  .cal-popup th { background:#f3f4f6; padding:5px 4px; text-align:left; border-bottom:2px solid #d1d5db; font-weight:600; }
+  .cal-popup td { padding:4px; border-bottom:1px solid #e5e7eb; }
+  .cal-popup .cp-title { font-weight:700; font-size:14px; margin-bottom:8px; }
   .cal-toggle { margin-left:8px; }
 </style>
 </head>
@@ -220,6 +250,7 @@
   <div class="tab-bar">
     <button class="active" id="tab-credit" onclick="switchTab('credit')">信用卡交易查询</button>
     <button id="tab-debit" onclick="switchTab('debit')">借记卡交易查询</button>
+    <button id="tab-jd" onclick="switchTab('jd')">电商交易查询</button>
     <button id="tab-cards" onclick="switchTab('cards')">卡片管理</button>
   </div>
 
@@ -394,6 +425,7 @@
         <button class="cal-nav" onclick="shiftCalMonth(1)">›</button>
       </div>
       <div class="cal-grid" id="cal-grid"></div>
+      <div class="cal-popup" id="cal-popup"></div>
     </div>
     <div class="pagination" id="pagination"></div>
   </div>
@@ -645,16 +677,6 @@ function renderCalendar() {
   const monthStr = _calYear + '-' + String(_calMonth).padStart(2, '0');
   title.textContent = _calYear + '年' + _calMonth + '月';
 
-  // 计算该月最大金额(用于柱状图比例)
-  let maxAmt = 0;
-  for (const d of _dailyData) {
-    if (d.date.startsWith(monthStr)) {
-      maxAmt = Math.max(maxAmt, d.spend, d.repay);
-    }
-  }
-  if (maxAmt < 1) maxAmt = 1;
-  const barMaxH = 50; // 最高50px
-
   // 星期标头
   const dayNames = ['日', '一', '二', '三', '四', '五', '六'];
   let html = dayNames.map(n => `<div class="cal-day-header">${n}</div>`).join('');
@@ -672,14 +694,30 @@ function renderCalendar() {
     const isToday = _calYear === today.getFullYear() && _calMonth === (today.getMonth() + 1) && d === today.getDate();
 
     if (dayData) {
-      const spendH = Math.round((dayData.spend / maxAmt) * barMaxH);
-      const repayH = Math.round((dayData.repay / maxAmt) * barMaxH);
-      html += `<div class="cal-cell${isToday ? ' today' : ''}" title="${dateKey}: 支出¥${dayData.spend.toFixed(2)} 还款¥${dayData.repay.toFixed(2)} ${dayData.count}笔">
+      // 每格10个单位, 每个单位=1万, 按比例填充
+      const unitAmt = 10000;
+      var isMax = (dayData.spend + dayData.repay) >= 100000;
+      var remainSpend = dayData.spend;
+      var remainRepay = dayData.repay;
+      var unitHtml = '';
+      for (var ui = 0; ui < 10; ui++) {
+        var fillPct = 0, color = '';
+        if (remainSpend > 0) {
+          fillPct = Math.min(remainSpend / unitAmt, 1) * 100;
+          color = 'red';
+          remainSpend -= unitAmt;
+        } else if (remainRepay > 0 && !isMax) {
+          fillPct = Math.min(remainRepay / unitAmt, 1) * 100;
+          color = 'green';
+          remainRepay -= unitAmt;
+        }
+        var maxCls = (isMax && color === 'red' && fillPct >= 100) ? ' max' : '';
+        var inner = fillPct > 0 ? '<div class="cal-unit-fill ' + color + '" style="height:' + fillPct + '%"></div>' : '';
+        unitHtml += '<div class="cal-unit' + maxCls + '">' + inner + '</div>';
+      }
+      html += `<div class="cal-cell${isToday ? ' today' : ''}" onclick="showCalPopup('${dateKey}')" title="${dateKey}: 支出¥${dayData.spend.toFixed(2)} 还款¥${dayData.repay.toFixed(2)} ${dayData.count}笔">
         <div class="cal-date">${d}</div>
-        <div class="cal-bars">
-          <div class="cal-bar red" style="height:${Math.max(spendH, 2)}px"></div>
-          <div class="cal-bar green" style="height:${Math.max(repayH, 2)}px"></div>
-        </div>
+        <div class="cal-unit-grid">${unitHtml}</div>
         <div class="cal-amounts">
           <div class="cal-spend">${dayData.spend.toFixed(0)}</div>
           <div class="cal-repay">${dayData.repay.toFixed(0)}</div>
@@ -688,7 +726,7 @@ function renderCalendar() {
     } else {
       html += `<div class="cal-cell no-data${isToday ? ' today' : ''}">
         <div class="cal-date">${d}</div>
-        <div class="cal-bars"><div class="cal-bar red" style="height:1px"></div><div class="cal-bar green" style="height:1px"></div></div>
+        <div class="cal-unit-grid">${'<div class="cal-unit"></div>'.repeat(10)}</div>
         <div class="cal-amounts"><div class="cal-spend">-</div><div class="cal-repay">-</div></div>
       </div>`;
     }
@@ -696,6 +734,41 @@ function renderCalendar() {
 
   grid.innerHTML = html;
 }
+
+// 日历点击弹出当日明细
+function showCalPopup(dateKey) {
+  const dayData = _dailyData.find(d => d.date === dateKey);
+  if (!dayData || !dayData.txns || !dayData.txns.length) return;
+  
+  var popup = document.getElementById('cal-popup');
+  var html = '<div class="cp-title">' + dateKey + ' 交易明细</div><table><thead><tr><th>银行</th><th>摘要</th><th>金额</th></tr></thead><tbody>';
+  for (var t of dayData.txns) {
+    var amtCls = t.amount > 0 ? 'style="color:#dc2626;"' : 'style="color:#059669;"';
+    html += '<tr><td>' + debitBankName(t.bank_code) + '</td><td>' + esc(t.description) + '</td><td ' + amtCls + '>' + t.amount.toFixed(2) + '</td></tr>';
+  }
+  html += '</tbody></table>';
+  popup.innerHTML = html;
+  popup.style.display = 'block';
+  
+  // 定位到点击位置附近
+  var rect = event.target.closest('.cal-cell').getBoundingClientRect();
+  var left = rect.left + rect.width / 2 - 250;
+  var top = rect.bottom + 4;
+  if (left < 10) left = 10;
+  if (top + 400 > window.innerHeight) top = rect.top - 400;
+  popup.style.left = left + 'px';
+  popup.style.top = top + 'px';
+  popup.classList.add('show');
+}
+
+// 点击其他地方关闭日历弹出窗
+document.addEventListener('click', function(e) {
+  var popup = document.getElementById('cal-popup');
+  if (popup && popup.classList.contains('show') && !e.target.closest('.cal-cell') && !e.target.closest('.cal-popup')) {
+    popup.classList.remove('show');
+    popup.style.display = 'none';
+  }
+});
 
 function shiftCalMonth(delta) {
   _calMonth += delta;
@@ -924,6 +997,7 @@ function exportExcel() {
   window.open('/api/export?' + params.toString(), '_blank');
 }
 
+// ============ 通用翻页器 ============
 function renderPager() {
   const total = currentTotal;
   const cur = currentOffset;
@@ -937,7 +1011,11 @@ function renderPager() {
                <button ${cur === 0 ? 'disabled' : ''} onclick="doSearch(${cur - size})">‹ 上一页</button>
                <span class="page-info">第 ${curPage} / ${totalPages} 页，共 ${total.toLocaleString()} 条</span>
                <button ${cur + size >= total ? 'disabled' : ''} onclick="doSearch(${cur + size})">下一页 ›</button>
-               <button ${cur + size >= total ? 'disabled' : ''} onclick="doSearch(${(totalPages-1)*size})">末页 »</button>`;
+               <button ${cur + size >= total ? 'disabled' : ''} onclick="doSearch(${(totalPages-1)*size})">末页 »</button>
+               <span class="page-jump">跳转 <input type="number" min="1" max="${totalPages}" value="${curPage}"
+                 onchange="var v=parseInt(this.value);if(v>=1&&v<=${totalPages})doSearch((v-1)*${size})"
+                 style="width:50px;padding:3px 4px;font-size:12px;border:1px solid #d1d5db;border-radius:4px;text-align:center;">
+               页</span>`;
 
   document.getElementById('pagination').innerHTML = html;
 }
@@ -978,22 +1056,156 @@ function switchTab(tab) {
   document.getElementById('tab-credit').classList.toggle('active', tab === 'credit');
   document.getElementById('tab-debit').classList.toggle('active', tab === 'debit');
   document.getElementById('tab-cards').classList.toggle('active', tab === 'cards');
+  document.getElementById('tab-jd').classList.toggle('active', tab === 'jd');
   document.getElementById('credit-section').style.display = tab === 'credit' ? '' : 'none';
   document.getElementById('debit-section').style.display = tab === 'debit' ? '' : 'none';
   document.getElementById('cards-section').style.display = tab === 'cards' ? '' : 'none';
+  document.getElementById('jd-section').style.display = tab === 'jd' ? '' : 'none';
   if (tab === 'debit') {
     loadDebitMeta();
     if (!dCurrentTotal) doDebitSearch(0);
   }
   if (tab === 'cards') loadCardInfo();
+  if (tab === 'jd') { loadJdMeta(); doJdSearch(0); }
 }
 
 // ============ 借记卡查询 ============
 let dPageSize = 50;
 let dCurrentTotal = 0;
 let _debitLoaded = false;
+let _dDebitCalYear = new Date().getFullYear();
+let _dDebitCalMonth = new Date().getMonth() + 1;
+let _dDebitDailyData = [];
 
 function fDebit(id) { const e=document.getElementById(id); return e?e.value:''; }
+
+// ============ 借记卡日历 ============
+const DEBIT_TIER_MULTIPLIERS = [1, 10, 100, 1000, 10000];
+const DEBIT_TIER_LABELS = ['1', '1k', '10k', '100k', '1m'];
+
+function toggleDebitCalendar() {
+  var dv = document.getElementById('debit-cal-view');
+  var panel = document.getElementById('d-results-panel');
+  var pager = document.getElementById('d-pager');
+  if (dv.style.display !== 'block') {
+    dv.style.display = 'block';
+    panel.style.display = 'none';
+    pager.style.display = 'none';
+    if (!_dDebitDailyData.length) loadDebitDaily();
+    else renderDebitCalendar();
+  } else {
+    dv.style.display = 'none';
+    panel.style.display = '';
+    pager.style.display = '';
+  }
+}
+
+function shiftDebitCal(delta) {
+  _dDebitCalMonth += delta;
+  if (_dDebitCalMonth > 12) { _dDebitCalMonth = 1; _dDebitCalYear++; }
+  if (_dDebitCalMonth < 1) { _dDebitCalMonth = 12; _dDebitCalYear--; }
+  renderDebitCalendar();
+}
+
+async function loadDebitDaily() {
+  try {
+    const data = await api('/api/debit/daily');
+    _dDebitDailyData = data.daily || [];
+    renderDebitCalendar();
+  } catch(e) { console.error(e); }
+}
+
+function renderDebitCalendar() {
+  const grid = document.getElementById('d-cal-grid');
+  const title = document.getElementById('d-cal-title');
+  if (!grid) return;
+
+  const map = {};
+  for (const d of _dDebitDailyData) map[d.date] = d;
+
+  const daysInMonth = new Date(_dDebitCalYear, _dDebitCalMonth, 0).getDate();
+  const firstDay = new Date(_dDebitCalYear, _dDebitCalMonth - 1, 1).getDay();
+  const monthStr = _dDebitCalYear + '-' + String(_dDebitCalMonth).padStart(2, '0');
+  title.textContent = _dDebitCalYear + '年' + _dDebitCalMonth + '月';
+
+  const dayNames = ['日', '一', '二', '三', '四', '五', '六'];
+  let html = dayNames.map(n => '<div class="cal-day-header">' + n + '</div>').join('');
+
+  for (let i = 0; i < firstDay; i++) html += '<div class="cal-cell other-month"></div>';
+
+  const today = new Date();
+
+  for (let d = 1; d <= daysInMonth; d++) {
+    const dateKey = monthStr + '-' + String(d).padStart(2, '0');
+    const dayData = map[dateKey];
+    const isToday = _dDebitCalYear === today.getFullYear() && _dDebitCalMonth === (today.getMonth() + 1) && d === today.getDate();
+
+    if (dayData) {
+      var isMax = dayData.expense >= 10000000 || dayData.income >= 10000000;
+      var unitHtml = '';
+      
+      // 5 tiers, left-to-right: 1m → 100k → 10k → 1k → 100 (digit positions)
+      const tierUnits = [1000000, 100000, 10000, 1000, 100];
+      
+      // 支出 (top row, red)
+      for (var ti = 0; ti < 5; ti++) {
+        var digit = Math.floor(dayData.expense / tierUnits[ti]) % 10;
+        var fillPct = digit * 10;
+        var mCls = (isMax && ti === 0 && digit >= 10) ? ' max' : '';
+        var inner = fillPct > 0 ? '<div class="cal-unit-fill e' + (ti+1) + '" style="height:' + fillPct + '%"></div>' : '';
+        unitHtml += '<div class="cal-unit' + mCls + '">' + inner + '</div>';
+      }
+      
+      // 收入 (bottom row, green)
+      for (var ti = 0; ti < 5; ti++) {
+        var digit = Math.floor(dayData.income / tierUnits[ti]) % 10;
+        var fillPct = digit * 10;
+        var mCls = (isMax && ti === 0 && digit >= 10) ? ' max' : '';
+        var inner = fillPct > 0 ? '<div class="cal-unit-fill i' + (ti+1) + '" style="height:' + fillPct + '%"></div>' : '';
+        unitHtml += '<div class="cal-unit' + mCls + '">' + inner + '</div>';
+      }
+
+      html += '<div class="cal-cell' + (isToday ? ' today' : '') + '" onclick="showDebitCalPopup(\'' + dateKey + '\')" title="' + dateKey + ': 支出¥' + dayData.expense.toFixed(2) + ' 收入¥' + dayData.income.toFixed(2) + '">' +
+        '<div class="cal-date">' + d + '</div>' +
+        '<div class="cal-unit-grid">' + unitHtml + '</div>' +
+        '<div class="cal-amounts"><div class="cal-spend">' + dayData.expense.toFixed(0) + '</div><div class="cal-repay">' + dayData.income.toFixed(0) + '</div></div>' +
+      '</div>';
+    } else {
+      var emptyUnits = '';
+      for (var ui = 0; ui < 10; ui++) emptyUnits += '<div class="cal-unit"></div>';
+      html += '<div class="cal-cell no-data' + (isToday ? ' today' : '') + '">' +
+        '<div class="cal-date">' + d + '</div>' +
+        '<div class="cal-unit-grid">' + emptyUnits + '</div>' +
+        '<div class="cal-amounts"><div class="cal-spend">-</div><div class="cal-repay">-</div></div>' +
+      '</div>';
+    }
+  }
+  grid.innerHTML = html;
+}
+
+function showDebitCalPopup(dateKey) {
+  const dayData = _dDebitDailyData.find(d => d.date === dateKey);
+  if (!dayData || !dayData.txns || !dayData.txns.length) return;
+  
+  var popup = document.getElementById('cal-popup');
+  var html = '<div class="cp-title">' + dateKey + ' 交易明细</div><table><thead><tr><th>银行</th><th>摘要</th><th>金额</th></tr></thead><tbody>';
+  for (var t of dayData.txns) {
+    var amtStyle = t.amount < 0 ? 'style="color:#dc2626;"' : 'style="color:#059669;"';
+    html += '<tr><td>' + (debitBankName(t.bank_code) || t.bank_code) + '</td><td>' + esc(t.description) + '</td><td ' + amtStyle + '>' + t.amount.toFixed(2) + '</td></tr>';
+  }
+  html += '</tbody></table>';
+  popup.innerHTML = html;
+  popup.style.display = 'block';
+  
+  var rect = event.target.closest('.cal-cell').getBoundingClientRect();
+  var left = rect.left + rect.width / 2 - 250;
+  var top = rect.bottom + 4;
+  if (left < 10) left = 10;
+  if (top + 400 > window.innerHeight) top = rect.top - 400;
+  popup.style.left = left + 'px';
+  popup.style.top = top + 'px';
+  popup.classList.add('show');
+}
 
 async function loadDebitMeta() {
   if (_debitLoaded) return;
@@ -1084,10 +1296,38 @@ function renderDebitPager(currentPage) {
   var el = document.getElementById('d-pager');
   if (totalPages <= 1) { el.innerHTML = ''; return; }
   var html = '';
-  if (currentPage > 0) html += '<button onclick="doDebitSearch(' + (currentPage-1) + ')">&lsaquo; 上一页</button>';
-  html += '<span style="margin:0 12px;font-size:13px;color:#666;">第 ' + (currentPage+1) + '/' + totalPages + ' 页</span>';
-  if (currentPage < totalPages - 1) html += '<button onclick="doDebitSearch(' + (currentPage+1) + ')">下一页 &rsaquo;</button>';
+  html += '<button ' + (currentPage === 0 ? 'disabled' : '') + ' onclick="doDebitSearch(0)">« 首页</button>';
+  html += '<button ' + (currentPage === 0 ? 'disabled' : '') + ' onclick="doDebitSearch(' + (currentPage-1) + ')">‹ 上一页</button>';
+  html += '<span class="page-info">第 ' + (currentPage+1) + '/' + totalPages + ' 页，共 ' + dCurrentTotal.toLocaleString() + ' 条</span>';
+  html += '<button ' + (currentPage >= totalPages-1 ? 'disabled' : '') + ' onclick="doDebitSearch(' + (currentPage+1) + ')">下一页 ›</button>';
+  html += '<button ' + (currentPage >= totalPages-1 ? 'disabled' : '') + ' onclick="doDebitSearch(' + (totalPages-1) + ')">末页 »</button>';
+  html += '<span class="page-jump">跳转 <input type="number" min="1" max="' + totalPages + '" value="' + (currentPage+1) + '" onchange="var v=parseInt(this.value);if(v>=1&&v<=' + totalPages + ')doDebitSearch(v-1)" style="width:50px;padding:3px 4px;font-size:12px;border:1px solid #d1d5db;border-radius:4px;text-align:center;"> 页</span>';
   el.innerHTML = html;
+}
+
+let _dIsAiMode = false;
+
+async function doDebitAiSearch() {
+  const q = document.getElementById('d-ai-input').value.trim();
+  if (!q) return;
+  _dIsAiMode = true;
+
+  const msgEl = document.getElementById('d-ai-msg');
+  msgEl.innerHTML = '<div class="ai-loading"><div class="spinner"></div>AI 正在分析查询并执行...</div>';
+
+  try {
+    const data = await api('/api/debit/ai-search?q=' + encodeURIComponent(q) + '&size=' + dPageSize + '&page=0');
+    if (data.error) {
+      msgEl.innerHTML = '<div class="error-msg">' + data.error + '</div>';
+      return;
+    }
+    dCurrentTotal = data.total;
+    msgEl.innerHTML = '<div style="font-size:12px;color:#7c3aed;margin-bottom:8px;">🤖 AI查询: "' + q + '" → 找到 ' + data.total + ' 条结果</div>';
+    renderDebitTable(data);
+    renderDebitPager(0);
+  } catch(e) {
+    msgEl.innerHTML = '<div class="error-msg">' + e.message + '</div>';
+  }
 }
 
 function resetDebitFilters() {
@@ -1192,11 +1432,29 @@ loadMeta();
       <button class="btn btn-secondary" onclick="resetDebitFilters()">重置</button>
     </div>
   </div>
+
+  <!-- 借记卡 AI 查询 -->
   <div class="panel">
-    <div class="results-header">
-      <div class="panel-title" style="margin:0">📋 借记卡交易 <span id="d-result-count"></span> <span id="d-result-totals" style="font-size:13px;font-weight:400;color:#555;"></span></div>
-      <button class="btn btn-secondary" onclick="debitExportExcel()" style="font-size:12px;padding:5px 12px;">📥 导出Excel</button>
+    <div class="panel-title">🤖 AI 智能查询</div>
+    <div style="font-size:12px; color:#6b7280; margin-bottom:10px;">
+      用自然语言描述你的借记卡查询，如："2024年4月华瑞银行大额转账记录"、"收入超过1万的"
     </div>
+    <div class="ai-area">
+      <input type="text" id="d-ai-input" placeholder="输入自然语言查询"
+             onkeydown="if(event.key==='Enter')doDebitAiSearch()">
+      <button class="btn btn-ai" onclick="doDebitAiSearch()">🚀 AI查询</button>
+    </div>
+    <div id="d-ai-msg"></div>
+  </div>
+
+  <div class="panel" id="d-results-panel">
+      <div class="results-header">
+        <div class="panel-title" style="margin:0">📋 借记卡交易 <span id="d-result-count"></span> <span id="d-result-totals" style="font-size:13px;font-weight:400;color:#555;"></span></div>
+        <div style="display:flex;gap:8px;">
+          <button class="btn btn-secondary" onclick="debitExportExcel()" style="font-size:12px;padding:5px 12px;">📥 导出Excel</button>
+          <button class="btn btn-secondary cal-toggle" onclick="toggleDebitCalendar()" style="font-size:12px;padding:5px 12px;">📅 日历</button>
+        </div>
+      </div>
     <div class="table-wrap">
       <table>
         <thead>
@@ -1218,6 +1476,16 @@ loadMeta();
       </table>
     </div>
     <div id="d-pager" class="pager"></div>
+  </div>
+  <div id="debit-cal-view" style="display:none;">
+    <div class="panel">
+      <div class="cal-header">
+        <button onclick="shiftDebitCal(-1)">‹</button>
+        <span class="cal-title" id="d-cal-title">2026年4月</span>
+        <button onclick="shiftDebitCal(1)">›</button>
+      </div>
+      <div class="cal-grid" id="d-cal-grid"></div>
+    </div>
   </div>
 </div>
 
@@ -1258,6 +1526,85 @@ loadMeta();
   </div>
 </div>
 
+<!-- ====== 电商交易 ====== -->
+<div id="jd-section" style="display:none;">
+  <div class="panel">
+    <div class="panel-title">🔍 电商交易查询</div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>姓名</label>
+        <select id="jf-name"><option value="">吴华辉</option></select>
+      </div>
+      <div class="form-group">
+        <label>电商</label>
+        <select id="jf-platform"><option value="">全部</option><option value="京东">京东</option></select>
+      </div>
+      <div class="form-group">
+        <label>手机号</label>
+        <input type="text" id="jf-phone" placeholder="13918015068" style="padding:6px;border:1px solid #ccc;border-radius:6px;font-size:13px;width:100%;box-sizing:border-box;">
+      </div>
+      <div class="form-group">
+        <label>交易类型</label>
+        <select id="jf-type"><option value="">全部</option></select>
+      </div>
+      <div class="form-group">
+        <label>最小金额</label>
+        <input type="number" id="jf-min" step="0.01" style="padding:6px;border:1px solid #ccc;border-radius:6px;font-size:13px;width:100%;box-sizing:border-box;">
+      </div>
+      <div class="form-group">
+        <label>最大金额</label>
+        <input type="number" id="jf-max" step="0.01" style="padding:6px;border:1px solid #ccc;border-radius:6px;font-size:13px;width:100%;box-sizing:border-box;">
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>开始日期</label>
+        <input type="date" id="jf-start">
+      </div>
+      <div class="form-group">
+        <label>结束日期</label>
+        <input type="date" id="jf-end">
+      </div>
+      <div class="form-group">
+        <label>关键词</label>
+        <input type="text" id="jf-keyword" placeholder="商品名或商户" style="padding:6px;border:1px solid #ccc;border-radius:6px;font-size:13px;width:100%;box-sizing:border-box;">
+      </div>
+    </div>
+    <div class="form-row" style="margin-top:14px;">
+      <button class="btn btn-primary" onclick="doJdSearch(0)">🔍 查询</button>
+    </div>
+  </div>
+
+  <!-- 电商 AI 查询 -->
+  <div class="panel">
+    <div class="panel-title">🤖 AI 智能查询</div>
+    <div style="font-size:12px; color:#6b7280; margin-bottom:10px;">
+      用自然语言描述你的电商交易查询
+    </div>
+    <div class="ai-area">
+      <input type="text" id="jd-ai-input" placeholder="如：去年京东大额消费"
+             onkeydown="if(event.key==='Enter')doJdAiSearch()">
+      <button class="btn btn-ai" onclick="doJdAiSearch()">🚀 AI查询</button>
+    </div>
+    <div id="jd-ai-msg"></div>
+  </div>
+
+  <div class="panel">
+    <div class="results-header">
+      <div class="panel-title" style="margin:0">📋 电商交易 <span id="jf-result-count"></span> <span id="jf-result-totals" style="font-size:13px;font-weight:400;color:#555;"></span></div>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>时间</th><th>电商</th><th>商户</th><th>商品</th><th>金额</th><th>收/支</th><th>支付方式</th><th>银行</th><th>分类</th></tr>
+        </thead>
+        <tbody id="jf-result-body"></tbody>
+      </table>
+    </div>
+    <div id="jf-pager" class="pager"></div>
+  </div>
+</div>
+
 <style>
 .card-info-table { width:100%; border-collapse:collapse; font-size:13px; }
 .card-info-table th { background:#f3f4f6; padding:8px 6px; text-align:left; border-bottom:2px solid #d1d5db; font-weight:600; }
@@ -1268,8 +1615,106 @@ loadMeta();
 
 <script>
 let _cardInfoLoaded = false;
+let _jdLoaded = false;
 
 function cf(id) { const e=document.getElementById('cf-'+id); return e?e.value:''; }
+function jf(id) { const e=document.getElementById('jf-'+id); return e?e.value:''; }
+
+async function doJdSearch(page) {
+  const params = new URLSearchParams();
+  params.set('size', 50);
+  params.set('page', page);
+  if (jf('type')) params.set('income_expense', jf('type'));
+  if (jf('platform')) params.set('platform', jf('platform'));
+  if (jf('phone')) params.set('phone', jf('phone'));
+  if (jf('min')) params.set('min_amount', jf('min'));
+  if (jf('max')) params.set('max_amount', jf('max'));
+  if (jf('start')) params.set('start_date', jf('start'));
+  if (jf('end')) params.set('end_date', jf('end'));
+  if (jf('keyword')) params.set('keyword', jf('keyword'));
+  
+  const data = await api('/api/jd/search?' + params.toString());
+  _jdLoaded = true;
+  
+  const el = document.getElementById('jf-result-totals');
+  if (data.total > 0) {
+    el.innerHTML = '<span style="color:#059669;">收入 &yen;' + data.sum_income.toLocaleString() + '</span> &brvbar; <span style="color:#dc2626;">支出 &yen;' + data.sum_expense.toLocaleString() + '</span> &brvbar; <span style="color:#6b7280;">不计收支 &yen;' + data.sum_neutral.toLocaleString() + '</span>';
+    document.getElementById('jf-result-count').textContent = '\u2014 \u5171 ' + data.total.toLocaleString() + ' \u6761';
+  } else {
+    el.textContent = ''; document.getElementById('jf-result-count').textContent = '';
+  }
+  
+  var rows = data.transactions;
+  if (!rows.length) {
+    document.getElementById('jf-result-body').innerHTML = '<tr><td colspan="9" style="text-align:center;color:#9ca3af;padding:20px;">\u6682\u65e0\u6570\u636e</td></tr>';
+    return;
+  }
+  
+  document.getElementById('jf-result-body').innerHTML = rows.map(function(r){
+    var color = r.income_expense === '\u652f\u51fa' ? '#dc2626' : r.income_expense === '\u6536\u5165' ? '#059669' : '#6b7280';
+    var amtColor = r.income_expense === '\u652f\u51fa' ? '#dc2626' : '#059669';
+    return '<tr>' +
+      '<td>' + r.trans_time.slice(0,10) + '</td>' +
+      '<td>' + esc(r.platform||'\u4eac\u4e1c') + '</td>' +
+      '<td>' + esc(r.merchant_name) + '</td>' +
+      '<td title="' + esc(r.description) + '">' + esc(r.description).slice(0,40) + (r.description.length > 40 ? '...' : '') + '</td>' +
+      '<td style="font-weight:600;color:' + amtColor + ';">' + r.amount.toLocaleString('zh-CN',{minimumFractionDigits:2}) + '</td>' +
+      '<td style="color:' + color + ';">' + r.income_expense + '</td>' +
+      '<td>' + esc(r.payment_method) + '</td>' +
+      '<td>' + esc(r.bank_name) + (r.card_last4 ? ' ****' + r.card_last4 : '') + '</td>' +
+      '<td>' + esc(r.category) + '</td></tr>';
+  }).join('');
+  
+  // pager
+  var totalPages = Math.ceil(data.total / 50);
+  var el2 = document.getElementById('jf-pager');
+  if (totalPages <= 1) { el2.innerHTML = ''; return; }
+  var html2 = '';
+  html2 += '<button ' + (page === 0 ? 'disabled' : '') + ' onclick="doJdSearch(0)">« 首页</button>';
+  html2 += '<button ' + (page === 0 ? 'disabled' : '') + ' onclick="doJdSearch(' + (page-1) + ')">‹ 上一页</button>';
+  html2 += '<span class="page-info">第 ' + (page+1) + '/' + totalPages + ' 页，共 ' + data.total.toLocaleString() + ' 条</span>';
+  html2 += '<button ' + (page >= totalPages-1 ? 'disabled' : '') + ' onclick="doJdSearch(' + (page+1) + ')">下一页 ›</button>';
+  html2 += '<button ' + (page >= totalPages-1 ? 'disabled' : '') + ' onclick="doJdSearch(' + (totalPages-1) + ')">末页 »</button>';
+  html2 += '<span class="page-jump">跳转 <input type="number" min="1" max="' + totalPages + '" value="' + (page+1) + '" onchange="var v=parseInt(this.value);if(v>=1&&v<=' + totalPages + ')doJdSearch(v-1)" style="width:50px;padding:3px 4px;font-size:12px;border:1px solid #d1d5db;border-radius:4px;text-align:center;"> 页</span>';
+  el2.innerHTML = html2;
+}
+
+async function doJdAiSearch() {
+  const q = document.getElementById('jd-ai-input').value.trim();
+  if (!q) return;
+  const msgEl = document.getElementById('jd-ai-msg');
+  msgEl.innerHTML = '<div class="ai-loading"><div class="spinner"></div>AI 正在分析查询并执行...</div>';
+  try {
+    const data = await api('/api/jd/ai-search?q=' + encodeURIComponent(q) + '&size=50&page=0');
+    if (data.error) { msgEl.innerHTML = '<div class="error-msg">' + data.error + '</div>'; return; }
+    _jdLoaded = true;
+    const el = document.getElementById('jf-result-totals');
+    el.innerHTML = '<span style="color:#059669;">收入 &yen;' + data.sum_income.toLocaleString() + '</span> &brvbar; <span style="color:#dc2626;">支出 &yen;' + data.sum_expense.toLocaleString() + '</span> &brvbar; <span style="color:#6b7280;">不计收支 &yen;' + data.sum_neutral.toLocaleString() + '</span>';
+    document.getElementById('jf-result-count').textContent = '' + data.total + ' 条';
+    msgEl.innerHTML = '<div style="font-size:12px;color:#7c3aed;margin-bottom:8px;">🤖 AI查询: "' + q + '" \u2192 ' + data.total + ' 条</div>';
+    var rows = data.transactions;
+    if (!rows.length) {
+      document.getElementById('jf-result-body').innerHTML = '<tr><td colspan="9" style="text-align:center;color:#9ca3af;padding:20px;">\u6682\u65e0\u6570\u636e</td></tr>';
+      return;
+    }
+    document.getElementById('jf-result-body').innerHTML = rows.map(function(r){
+      var c = r.income_expense === '\u652f\u51fa' ? '#dc2626' : r.income_expense === '\u6536\u5165' ? '#059669' : '#6b7280';
+      var ac = r.income_expense === '\u652f\u51fa' ? '#dc2626' : '#059669';
+      return '<tr><td>' + r.trans_time.slice(0,10) + '</td><td>' + esc(r.platform||'\u4eac\u4e1c') + '</td><td>' + esc(r.merchant_name) + '</td><td title="' + esc(r.description) + '">' + esc(r.description).slice(0,40) + (r.description.length>40?'...':'') + '</td><td style="font-weight:600;color:' + ac + ';">' + r.amount.toLocaleString() + '</td><td style="color:' + c + ';">' + r.income_expense + '</td><td>' + esc(r.payment_method) + '</td><td>' + esc(r.bank_name) + (r.card_last4?' ****'+r.card_last4:'') + '</td><td>' + esc(r.category) + '</td></tr>';
+    }).join('');
+    document.getElementById('jf-pager').innerHTML = '';
+  } catch(e) { msgEl.innerHTML = '<div class="error-msg">' + e.message + '</div>'; }
+}
+
+async function loadJdMeta() {
+  if (_jdLoaded) return;
+  try {
+    const types = await api('/api/jd/types');
+    var opts = [{v:'',t:'\u5168\u90e8'}];
+    for (var t of types) opts.push({v:t,t:t});
+    fillSelect('jf-type', opts);
+  } catch(e) { console.error(e); }
+}
 
 function onCardTypeChange() {
   const cls = document.getElementById('cf-class');
