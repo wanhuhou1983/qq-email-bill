@@ -35,13 +35,18 @@ def get_cardholders():
         cur.close(); conn.close()
 
 @router.get("/cards")
-def get_cards(bank_code: Optional[str] = Query(None)):
+def get_cards(bank_code: Optional[str] = Query(None), cardholder: Optional[str] = Query(None)):
     conn = get_conn(); cur = conn.cursor()
     try:
         sql = "SELECT card_last4, COUNT(*) as cnt FROM credit_card_transactions"
         vals = []
+        conds = []
         if bank_code:
-            sql += " WHERE bank_code = %s"; vals.append(bank_code)
+            conds.append("bank_code = %s"); vals.append(bank_code)
+        if cardholder:
+            conds.append("cardholder = %s"); vals.append(cardholder)
+        if conds:
+            sql += " WHERE " + " AND ".join(conds)
         sql += " GROUP BY card_last4 ORDER BY card_last4"
         cur.execute(sql, vals)
         return [{"card_last4": r[0], "count": r[1]} for r in cur.fetchall()]

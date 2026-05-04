@@ -748,7 +748,11 @@ document.addEventListener('click', closeCardFilter);
 
 async function renderCardFilter() {
   const bankCode = document.getElementById('f-bank').value;
-  const url = bankCode ? '/api/cards?bank_code=' + encodeURIComponent(bankCode) : '/api/cards';
+  const holder = document.getElementById('f-cardholder').value;
+  let url = '/api/cards?';
+  if (bankCode) url += 'bank_code=' + encodeURIComponent(bankCode) + '&';
+  if (holder) url += 'cardholder=' + encodeURIComponent(holder) + '&';
+  url = url.replace(/[?&]$/, '');
   try {
     const cards = await api(url);
     const dd = document.getElementById('card-filter-dropdown');
