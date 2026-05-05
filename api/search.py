@@ -47,7 +47,21 @@ def validate_ai_sql(raw: str, table: str = "credit_card_transactions") -> str:
     multi_stmt_chk = sql.rstrip(";")
     if ";" in multi_stmt_chk:
         raise HTTPException(status_code=400, detail="AI SQL 包含多语句（不允许）")
-    banned_tokens = ["--", "/*", "*/", "PG_", "INFORMATION_SCHEMA", "PG_CATALOG"]
+    banned_tokens = ["--", "/*", "*/", "PG_", "INFORMATION_SCHEMA", "PG_CATALOG",
+                     "PG_STAT", "PG_CLASS", "PG_ATTRIBUTE", "PG_NAMESPACE",
+                     "PG_TABLES", "PG_TYPE", "PG_DATABASE", "PG_INDEX",
+                     "PG_PROC", "PG_TRIGGER", "PG_CONSTRAINT", "PG_DEFINITION",
+                     "PG_ENUM", "PG_RANGE", "PG_OPCLASS", "PG_OPFAMILY",
+                     "PG_AM", "PG_AMOP", "PG_AMPROC", "PG_COLLATION",
+                     "PG_CONVERSION", "PG_LANGUAGE", "PG_LARGEOBJECT",
+                     "PG_PARTITION", "PG_POLICY", "PG_PUBLICATION",
+                     "PG_STATISTIC", "PG_SUBSCRIPTION", "PG_TS_CONFIG",
+                     "PG_TS_DICT", "PG_TS_PARSER", "PG_TS_TEMPLATE",
+                     "PG_USER", "PG_ROLES", "PG_SHADOW", "PG_AUTHID",
+                     "PG_AUTH_MEMBERS"]
+
+    if "UNION" in upper:
+        raise HTTPException(status_code=400, detail="AI SQL 不允许使用 UNION")
 
     if not upper.startswith("SELECT"):
         raise HTTPException(status_code=400, detail="AI 仅允许生成 SELECT 查询")
@@ -231,7 +245,7 @@ def ai_search(
                                 FROM ({sql}) AS sub""")
                 s = cur.fetchone()
                 sum_spend = float(s[0]); sum_repay = float(s[1])
-            except:
+            except Exception:
                 pass
 
         return {
@@ -307,7 +321,7 @@ def debit_ai_search(
                                 FROM ({sql}) AS sub""")
                 s = cur.fetchone()
                 sum_income = float(s[0]); sum_expense = float(s[1])
-            except:
+            except Exception:
                 pass
 
         return {
@@ -656,7 +670,7 @@ def jd_ai_search(
                             FROM ({sql}) AS sub""")
             s = cur.fetchone()
             sum_expense = float(s[0]); sum_income = float(s[1]); sum_neutral = float(s[2])
-        except:
+        except Exception:
             pass
 
         return {

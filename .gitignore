@@ -48,3 +48,25 @@ stock_api_append.py
 
 # Temp files
 $null
+
+# 敏感文件 - 不应提交
+boc_statement.pdf
+zheshang_qp.txt
+$null
+scripts/
+*_check*.py
+*_verify*.py
+*.ps1
+start_server.sh
+read_futu_folder.js
+test_*.js
+\n# 一次性工具脚本
+clean_ceb.py
+fix_abc_type.py
+fix_parse.py
+import_futu_monthly.py
+query_abc.py
+replace_section.py
+run_import.py
+run_import_v3.py
+对比报告.py

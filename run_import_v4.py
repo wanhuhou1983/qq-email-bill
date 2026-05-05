@@ -8,9 +8,12 @@
 """
 import pdfplumber, re, os, psycopg2
 from datetime import datetime
+from dotenv import load_dotenv
+
+load_dotenv()
 
 PDF_DIR = r'C:\Users\linhu\.workbuddy\skills\QQ邮箱\scripts\futu_monthly_pdfs'
-DB_PASSWORD = 'DB_PASSWORD'
+DB_PASSWORD = os.getenv('DB_PASSWORD', 'DB_PASSWORD')
 
 ACCOUNTS = {
     '5912': {
@@ -44,7 +47,7 @@ ACCOUNTS = {
             '2026-03': 'monthly_statement_202603_2179198667_3286.pdf',
             '2026-04': 'monthly_statement_202604_2179198667_3531.pdf',
         },
-        'password': 'FUTU_PASSWORD'
+        'password': os.getenv('FUTU_7913_PASSWORD', 'FUTU_PASSWORD')
     }
 }
 
