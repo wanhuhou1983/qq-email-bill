@@ -48,6 +48,18 @@ git仓库: https://github.com/wanhuhou1983/qq-email-bill.git
 - 翻页器统一居中对齐，支持首页/末页/页号跳转
 - 日历弹出当日明细
 
+## 富途港股月结单 (2026-05-05 v4)
+- 3个账户 × 6个月(2025/11~2026/04) = 18张PDF已入库
+- 账户: 5912吴华辉 / 0162赵健伟 / 7913王晓峰
+- pdfplumber解析，run_import_v4.py为完整版
+- 数据库表: futu_monthly_summary(18行), futu_transactions(33行), futu_financing_daily(181行)
+- 密码: 7913王晓峰密码=FUTU_PASSWORD
+- 10种交易方向: deposit/withdrawal/fund_subscription/fund_redemption/interest_fee/ipo_allot/ipo_apply/ipo_refund/purchase/redeem/sell/buy
+- API: /api/futu/meta, /api/futu/search
+- 前端已适配全部方向（红涨绿跌）
+- 排序: trade_date DESC  
+- 开机自启动: Startup\futu_api.lnk
+
 ## 电商交易表 jd_transactions
 - 2558条（京东2017-2025年）
 - 字段含platform/phone，方便未来接入微信/支付宝/抖音

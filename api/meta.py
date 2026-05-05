@@ -38,7 +38,7 @@ def get_cardholders():
 def get_cards(bank_code: Optional[str] = Query(None), cardholder: Optional[str] = Query(None)):
     conn = get_conn(); cur = conn.cursor()
     try:
-        sql = "SELECT card_last4, COUNT(*) as cnt FROM credit_card_transactions"
+        sql = "SELECT bank_code, cardholder, card_last4, COUNT(*) as cnt FROM credit_card_transactions"
         vals = []
         conds = []
         if bank_code:
@@ -47,9 +47,9 @@ def get_cards(bank_code: Optional[str] = Query(None), cardholder: Optional[str] 
             conds.append("cardholder = %s"); vals.append(cardholder)
         if conds:
             sql += " WHERE " + " AND ".join(conds)
-        sql += " GROUP BY card_last4 ORDER BY card_last4"
+        sql += " GROUP BY bank_code, cardholder, card_last4 ORDER BY bank_code, cardholder, card_last4"
         cur.execute(sql, vals)
-        return [{"card_last4": r[0], "count": r[1]} for r in cur.fetchall()]
+        return [{"bank_code": r[0], "cardholder": r[1], "card_last4": r[2], "count": r[3]} for r in cur.fetchall()]
     finally:
         cur.close(); conn.close()
 

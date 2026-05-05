@@ -734,3 +734,148 @@ def stock_search(
     finally:
         cur.close(); conn.close()
 
+
+# ============ 富途港股交易查询 ============
+
+@router.get("/futu/meta")
+def futu_meta():
+    conn = get_reader_conn(); cur = conn.cursor()
+    try:
+        # 同时从 futu_transactions + futu_monthly_summary 获取账户（王晓峰等只有汇总没交易的也能出现）
+        cur.execute("""
+            SELECT DISTINCT account_name FROM (
+                SELECT account_name FROM futu_transactions
+                UNION
+                SELECT account_name FROM futu_monthly_summary
+            ) t ORDER BY account_name
+        """)
+        names = [r[0] for r in cur.fetchall()]
+        cur.execute("SELECT DISTINCT asset_type FROM futu_transactions ORDER BY asset_type")
+        types = [r[0] for r in cur.fetchall()]
+        cur.execute("SELECT DISTINCT direction FROM futu_transactions ORDER BY direction")
+        dirs = [r[0] for r in cur.fetchall()]
+        return {"account_names": names, "asset_types": types, "directions": dirs}
+    finally:
+        cur.close(); conn.close()
+
+
+@router.get("/futu/search")
+def futu_search(
+    page: int = Query(0, ge=0),
+    size: int = Query(50, ge=0, le=200),
+    account_name: Optional[str] = Query(None),
+    asset_type: Optional[str] = Query(None),
+    direction: Optional[str] = Query(None),
+    keyword: Optional[str] = Query(None),
+    start_date: Optional[date] = Query(None),
+    end_date: Optional[date] = Query(None),
+):
+    conds = []; vals = []
+    if account_name:
+        conds.append("AND account_name = %s"); vals.append(account_name)
+    if asset_type:
+        conds.append("AND asset_type = %s"); vals.append(asset_type)
+    if direction:
+        conds.append("AND direction = %s"); vals.append(direction)
+    if keyword:
+        conds.append("AND (symbol ILIKE %s OR name ILIKE %s)")
+        vals.append(f"%{keyword}%"); vals.append(f"%{keyword}%")
+    if start_date:
+        conds.append("AND settle_date >= %s"); vals.append(start_date)
+    if end_date:
+        conds.append("AND settle_date <= %s"); vals.append(end_date)
+
+    where = " ".join(conds)
+    offset = page * size
+    conn = get_reader_conn(); cur = conn.cursor()
+    try:
+        cur.execute(f"SELECT COUNT(*) FROM futu_transactions WHERE 1=1 {where}", vals)
+        total = cur.fetchone()[0]
+        if size == 0:
+            return {"total": total, "transactions": []}
+
+        cur.execute(f"""SELECT id, settle_date, trade_date, account_name, account_no,
+                        asset_type, direction, symbol, name, exchange, currency,
+                        quantity, price, amount_hkd, net_amount_hkd,
+                        commission_hkd, platform_fee_hkd, settlement_fee_hkd,
+                        stamp_duty_hkd, trade_fee_hkd, regulatory_fee_hkd, levy_hkd
+                        FROM futu_transactions WHERE 1=1 {where}
+                        ORDER BY trade_date DESC, id DESC LIMIT {size} OFFSET {offset}""", vals)
+        cols = [desc[0] for desc in cur.description]
+        rows = cur.fetchall()
+        return {"total": total, "transactions": [row_to_dict(r, cols) for r in rows]}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    finally:
+        cur.close(); conn.close()
+
+
+# ============ 账户历史查询 ============
+
+@router.get("/account-history")
+def account_history():
+    """返回各账户在PG中的历史时间范围"""
+    conn = get_reader_conn(); cur = conn.cursor()
+    try:
+        result = {}
+        
+        # 信用卡: 按持卡人+银行+尾号
+        cur.execute("""
+            SELECT cardholder, bank_code, card_last4,
+                   MIN(trans_date) as first_date, MAX(trans_date) as last_date,
+                   COUNT(*) as total
+            FROM credit_card_transactions
+            GROUP BY cardholder, bank_code, card_last4
+            ORDER BY cardholder, bank_code
+        """)
+        result["credit"] = [{
+            "cardholder": r[0], "bank_code": r[1], "card_last4": r[2],
+            "start": str(r[3]), "end": str(r[4]), "count": r[5]
+        } for r in cur.fetchall()]
+
+        # 借记卡: 按持卡人+银行+尾号
+        cur.execute("""
+            SELECT COALESCE(account_name,''), bank_code,
+                   RIGHT(account_number,4) as last4,
+                   MIN(trans_date), MAX(trans_date), COUNT(*)
+            FROM debit_card_transactions
+            GROUP BY account_name, bank_code, RIGHT(account_number,4)
+            ORDER BY account_name, bank_code
+        """)
+        result["debit"] = [{
+            "cardholder": r[0], "bank_code": r[1], "card_last4": r[2],
+            "start": str(r[3]), "end": str(r[4]), "count": r[5]
+        } for r in cur.fetchall()]
+
+        # 电商: 按平台+手机号
+        cur.execute("""
+            SELECT COALESCE(platform,''), COALESCE(phone,''), COALESCE(cardholder,''),
+                   MIN(trans_time), MAX(trans_time), COUNT(*)
+            FROM jd_transactions
+            GROUP BY platform, phone, cardholder
+            ORDER BY platform
+        """)
+        result["jd"] = [{
+            "platform": r[0], "phone": r[1], "cardholder": r[2],
+            "start": str(r[3])[:10], "end": str(r[4])[:10], "count": r[5]
+        } for r in cur.fetchall()]
+
+        # 证券: 按持卡人+账户号
+        cur.execute("""
+            SELECT cardholder, account_number, COALESCE(platform,'\u94f6\u6cb3\u8bc1\u5238'),
+                   MIN(settle_date), MAX(settle_date), COUNT(*)
+            FROM stock_transactions
+            GROUP BY cardholder, account_number, platform
+            ORDER BY cardholder
+        """)
+        result["stock"] = [{
+            "cardholder": r[0], "account": r[1], "platform": r[2],
+            "start": str(r[3]), "end": str(r[4]), "count": r[5]
+        } for r in cur.fetchall()]
+
+        return result
+    finally:
+        cur.close(); conn.close()
+

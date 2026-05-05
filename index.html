@@ -148,7 +148,7 @@
     border-radius:0;
   }
   .tab-bar button:first-child { border-radius:8px 0 0 8px; }
-  .tab-bar button:nth-child(5) { border-radius:0 8px 8px 0; }
+  .tab-bar button:nth-child(6) { border-radius:0 8px 8px 0; }
   .tab-bar button.active { background:var(--primary); color:#fff; border-color:var(--primary); }
 
   /* 账期下拉 - 账单列表版 */
@@ -252,7 +252,8 @@
     <button id="tab-debit" onclick="switchTab('debit')">借记卡交易查询</button>
     <button id="tab-jd" onclick="switchTab('jd')">电商交易查询</button>
     <button id="tab-stock" onclick="switchTab('stock')">证券交易查询</button>
-    <button id="tab-cards" onclick="switchTab('cards')">卡片管理</button>
+    <button id="tab-futu" onclick="switchTab('futu')">富途港股</button>
+    <button id="tab-cards" onclick="switchTab('cards')">账户管理</button>
   </div>
 
   <!-- ====== 信用卡 ====== -->
@@ -403,11 +404,11 @@
     </div>
     <div class="table-wrap">
       <table>
-        <thead>
-          <tr>
+        <thead id="credit-thead">
+          <tr id="credit-thead-row">
             <th>银行</th>
             <th>持卡人</th>
-            <th class="th-wrap">卡号<button class="filter-btn" id="card-filter-btn" onclick="toggleCardFilter()">▼</button><div class="filter-dropdown" id="card-filter-dropdown"></div></th>
+            <th>卡号</th>
             <th>交易日</th>
             <th>记账日</th>
             <th>描述</th>
@@ -444,7 +445,7 @@ let currentBankForCards = '';            // 当前选中银行（用于卡号列
 const BANK_NAMES = {
   ABC: '农行', BOCOM: '交行', CCB: '建行', CGB: '广发',
   CITIC: '中信', CMB: '招行', ICBC: '工行', PAB: '平安',
-  CEB: '光大', CMBC: '民生', CZB: '浙商', BOC: '中行', NBC: '宁波'
+  CEB: '光大', CMBC: '民生', CZB: '浙商', BOC: '中行', NBC: '宁波', SPDB: '浦发'
 };
 
 const TYPE_NAMES = {
@@ -466,6 +467,7 @@ async function api(url) {
 }
 
 let _banks = []; // 全部银行数据（含持卡人）
+let _cardLast4 = []; // 全部银行+持卡人+尾号映射（从/api/cards获取）
 
 async function loadMeta() {
   try {
@@ -476,6 +478,9 @@ async function loadMeta() {
     ]);
 
     _banks = banks;
+
+    // 缓存全部银行+持卡人+尾号数据（供表头卡号下拉使用）
+    _cardLast4 = await api('/api/cards');
 
     const opts = v => [{v:'',t:'全部'}, ...v.map(x=>({v:x,t:x}))];
     fillSelect('f-cardholder', opts(cardholders));
@@ -507,8 +512,8 @@ async function loadMeta() {
     // 加载账期账单列表
     refreshCycles();
 
-    // 默认查询
-    doSearch(0);
+    // 默认查询 — 不自动加载，用户点"查询"才出数据
+    renderCreditThead();
   } catch(e) { console.error(e); }
 }
 
@@ -789,6 +794,7 @@ function shiftDate(id, days) {
 
 function updateBankOptions() {
   const holder = document.getElementById('f-cardholder').value;
+  const curBank = document.getElementById('f-bank').value;
   const filtered = holder
     ? _banks.filter(b => b.cardholder === holder)
     : _banks;
@@ -801,29 +807,246 @@ function updateBankOptions() {
     }
   }
   fillSelect('f-bank', opts);
+  // 保持已选银行值（如果仍在选项中）
+  if (curBank && opts.some(o => o.v === curBank)) {
+    document.getElementById('f-bank').value = curBank;
+  } else if (curBank) {
+    // 已选银行不在新列表中，说明该持卡人没有这家银行的卡，清除
+    document.getElementById('f-bank').value = '';
+  }
+  renderCreditThead();
   refreshCycles();  // 筛选条件变化时刷新账期
 }
 
-// ============ 卡号筛选 ============
-
-function toggleCardFilter() {
-  const dd = document.getElementById('card-filter-dropdown');
-  dd.classList.toggle('show');
-  document.getElementById('card-filter-btn').classList.toggle('active', dd.classList.contains('show'));
-  if (dd.classList.contains('show')) renderCardFilter();
+// ============ 信用卡表头筛选 ============
+function creditHdBtn(field, label, options, curVal) {
+  var items = '<div onclick="creditHdFilter(\'' + field + '\',\'\')" style="padding:6px 12px;cursor:pointer;font-size:13px;' + (!curVal?'color:var(--primary);font-weight:600;background:#f5f3ff;':'') + '">全部</div>';
+  for (var o of options) {
+    var sel = curVal === o.v ? 'color:var(--primary);font-weight:600;background:#f5f3ff;' : '';
+    items += '<div onclick="creditHdFilter(\'' + field + '\',\'' + esc(o.v).replace(/'/g,"\\'") + '\')" style="padding:6px 12px;cursor:pointer;font-size:13px;' + sel + '">' + esc(o.t) + '</div>';
+  }
+  var ddId = 'chd-dd-' + field;
+  return '<div class="th-wrap"><span onclick="toggleCreditHd(\'' + field + '\')" style="cursor:pointer;display:inline-flex;align-items:center;gap:3px;">' + label + '<svg width="10" height="10" viewBox="0 0 10 10" style="opacity:' + (curVal?'1':'0.5') + '"><path d="M2 3.5L5 7L8 3.5" stroke="' + (curVal?'var(--primary)':'#6b7280') + '" stroke-width="1.5" fill="none"/></svg></span><div class="acct-hd-dd" id="' + ddId + '" style="display:none;position:absolute;top:100%;left:0;z-index:100;background:#fff;border:1px solid #e5e7eb;border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.12);min-width:120px;max-height:240px;overflow-y:auto;padding:4px 0;">' + items + '</div></div>';
 }
 
-function closeCardFilter(e) {
-  if (!e.target.closest('.th-wrap')) {
-    document.getElementById('card-filter-dropdown').classList.remove('show');
-    document.getElementById('card-filter-btn').classList.remove('active');
+function toggleCreditHd(field) {
+  var dd = document.getElementById('chd-dd-' + field);
+  document.querySelectorAll('.acct-hd-dd.show').forEach(function(el){ if(el!==dd) el.classList.remove('show'); });
+  dd.classList.toggle('show');
+}
+
+function creditHdFilter(field, val) {
+  // Close dropdown
+  var dd = document.getElementById('chd-dd-' + field);
+  if (dd) dd.classList.remove('show');
+
+  if (field === 'bank') {
+    document.getElementById('f-bank').value = val;
+    // 切换银行后清空卡号筛选（避免选中不存在的卡）
+    selectedCards.clear();
+    refreshCycles();
+  } else if (field === 'holder') {
+    document.getElementById('f-cardholder').value = val;
+    // 切换持卡人后清空卡号筛选
+    selectedCards.clear();
+    updateBankOptions();
+    doSearch(0);
+    return; // updateBankOptions already renders thead + refreshCycles
+  } else if (field === 'last4') {
+    // 选具体卡号则只看这张; 选全部则清除
+    selectedCards.clear();
+    if (val) selectedCards.add(val);
+  }
+  renderCreditThead();
+  doSearch(0);
+}
+
+function renderCreditThead() {
+  var holder = document.getElementById('f-cardholder').value;
+  var bank = document.getElementById('f-bank').value;
+  // 级联: 持卡人按银行过滤; 银行按持卡人过滤; 卡号按两者过滤
+  var holderOpts = [{v:'',t:'全部'}];
+  var seenH = new Set();
+  for (var b of _banks) { if (bank && b.bank_code !== bank) continue; if (!seenH.has(b.cardholder)) { seenH.add(b.cardholder); holderOpts.push({v:b.cardholder,t:b.cardholder}); } }
+  var bankOpts = [{v:'',t:'全部'}];
+  var seenB = new Set();
+  for (var b of _banks) { if (holder && b.cardholder !== holder) continue; if (!seenB.has(b.bank_code)) { seenB.add(b.bank_code); bankOpts.push({v:b.bank_code,t:BANK_NAMES[b.bank_code]||b.bank_code}); } }
+  // 卡号选项：从_cardLast4获取，按bank+holder过滤
+  var last4Opts = [{v:'',t:'全部'}];
+  var seenL = new Set();
+  for (var c of _cardLast4) {
+    if (holder && c.cardholder !== holder) continue;
+    if (bank && c.bank_code !== bank) continue;
+    if (!c.card_last4) continue;
+    if (!seenL.has(c.card_last4)) {
+      seenL.add(c.card_last4);
+      last4Opts.push({v:c.card_last4, t:'****'+c.card_last4});
+    }
+  }
+  var curLast4 = selectedCards.size === 1 ? [...selectedCards][0] : '';
+
+  var row = document.getElementById('credit-thead-row');
+  row.innerHTML = '<th>' + creditHdBtn('bank','银行',bankOpts,bank) + '</th><th>' + creditHdBtn('holder','持卡人',holderOpts,holder) + '</th><th>' + creditHdBtn('last4','卡号',last4Opts,curLast4) + '</th><th>交易日</th><th>记账日</th><th>描述</th><th>类别</th><th>类型</th><th>金额（元）</th>';
+}
+
+// Close credit header dropdowns on outside click (already handled by the general acct-hd-dd handler)
+
+// ============ 账户管理 ============
+var acctFilter = { credit:{holder:'',bank:''}, debit:{holder:'',bank:''}, jd:{holder:'',platform:''}, stock:{holder:'',platform:''} };
+var acctMeta = null; // cached
+
+function toggleAcctSection(type) {
+  var body = document.getElementById('acct-body-' + type);
+  var arrow = document.getElementById('acct-arrow-' + type);
+  if (body.style.display === 'none') {
+    body.style.display = 'block';
+    arrow.classList.remove('collapsed');
+  } else {
+    body.style.display = 'none';
+    arrow.classList.add('collapsed');
   }
 }
-document.addEventListener('click', closeCardFilter);
 
-async function renderCardFilter() {
-  const bankCode = document.getElementById('f-bank').value;
-  const holder = document.getElementById('f-cardholder').value;
+// Toggle a header filter dropdown
+function toggleAcctFilter(type, field) {
+  var dd = document.getElementById('ac-dd-' + type + '-' + field);
+  // close all others first
+  document.querySelectorAll('.acct-hd-dd.show').forEach(function(el){ if(el!==dd) el.classList.remove('show'); });
+  dd.classList.toggle('show');
+}
+
+function setAcctFilter(type, field, val) {
+  acctFilter[type][field] = val;
+  toggleAcctFilter(type, field);
+  renderAcctTables();
+}
+
+// Build header dropdown HTML
+function acctHdBtn(type, field, label, options) {
+  var cur = acctFilter[type][field];
+  var items = '<div onclick="setAcctFilter(\'' + type + '\',\'' + field + '\',\'\')" style="padding:6px 12px;cursor:pointer;font-size:13px;' + (!cur?'color:var(--primary);font-weight:600;background:#f5f3ff;':'') + '">全部</div>';
+  for (var o of options) {
+    var sel = cur === o.v ? 'color:var(--primary);font-weight:600;background:#f5f3ff;' : '';
+    items += '<div onclick="setAcctFilter(\'' + type + '\',\'' + field + '\',\'' + esc(o.v) + '\')" style="padding:6px 12px;cursor:pointer;font-size:13px;' + sel + '">' + esc(o.t) + '</div>';
+  }
+  return '<div class="th-wrap"><span onclick="toggleAcctFilter(\'' + type + '\',\'' + field + '\')" style="cursor:pointer;display:inline-flex;align-items:center;gap:3px;">' + label + '<svg width="10" height="10" viewBox="0 0 10 10" style="opacity:0.5"><path d="M2 3.5L5 7L8 3.5" stroke="#6b7280" stroke-width="1.5" fill="none"/></svg></span><div class="acct-hd-dd" id="ac-dd-' + type + '-' + field + '" style="display:none;position:absolute;top:100%;left:0;z-index:100;background:#fff;border:1px solid #e5e7eb;border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.12);min-width:120px;max-height:220px;overflow-y:auto;padding:4px 0;">' + items + '</div></div>';
+}
+
+function renderAcctTables() {
+  loadAcctCredit();
+  loadAcctDebit();
+  loadAcctJd();
+  loadAcctStock();
+}
+
+async function loadAcctCredit() {
+  if (!acctMeta) return;
+  var p = new URLSearchParams();
+  if (acctFilter.credit.holder) p.set('cardholder', acctFilter.credit.holder);
+  if (acctFilter.credit.bank) p.set('bank_code', acctFilter.credit.bank);
+  p.set('account_type', 'credit');
+  var cards = await api('/api/card-info?' + p.toString());
+  var creditHist = acctMeta.credit || [];
+  // 级联: 持卡人选项根据已选银行过滤; 银行选项根据已选持卡人过滤
+  var filteredByBank = acctFilter.credit.bank ? creditHist.filter(function(x){return x.bank_code===acctFilter.credit.bank}) : creditHist;
+  var holders = [...new Set(filteredByBank.map(function(x){return x.cardholder}))];
+  var filteredByHolder = acctFilter.credit.holder ? creditHist.filter(function(x){return x.cardholder===acctFilter.credit.holder}) : creditHist;
+  var banks = [...new Set(filteredByHolder.map(function(x){return x.bank_code}))];
+
+  var html = '<table class="card-info-table"><thead><tr><th>' + acctHdBtn('credit','holder','持卡人',[...new Set(cards.filter(function(c){return c.account_type==='credit'}).map(function(c){return c.cardholder}))].map(function(n){return {v:n,t:n}})) + '</th><th>' + acctHdBtn('credit','bank','银行',banks.map(function(b){return {v:b,t:debitBankName(b)}})) + '</th><th>账户</th><th>最早</th><th>最晚</th><th>账户历史</th></tr></thead><tbody>';
+  for (var c of cards) {
+    if (c.account_type !== 'credit') continue;
+    var num = '****' + c.card_last4;
+    var h = creditHist.find(function(x) { return x.cardholder === c.cardholder && x.bank_code === c.bank_code && x.card_last4 === c.card_last4; });
+    if (!h) h = creditHist.find(function(x) { return x.cardholder === c.cardholder && x.bank_code === c.bank_code && !x.card_last4; });
+    var link = h ? '<a href="#" onclick="event.preventDefault();switchTab(\'credit\');setTimeout(function(){document.getElementById(\'f-cardholder\').value=\'' + esc(h.cardholder) + '\';document.getElementById(\'f-bank\').value=\'' + esc(h.bank_code) + '\';document.getElementById(\'f-last4\').value=\'' + esc(h.card_last4) + '\';doSearch(0)},100)">查看详情</a>' : '无数据';
+    html += '<tr><td>' + esc(c.cardholder) + '</td><td>' + debitBankName(c.bank_code) + '</td><td style="font-family:monospace;">' + num + '</td><td>' + (h?h.start:'') + '</td><td>' + (h?h.end:'') + '</td><td style="font-size:12px;">' + link + '</td></tr>';
+  }
+  html += '</tbody></table>';
+  document.getElementById('ac-credit-body').innerHTML = html;
+}
+
+async function loadAcctDebit() {
+  if (!acctMeta) return;
+  var p = new URLSearchParams();
+  if (acctFilter.debit.holder) p.set('account_name', acctFilter.debit.holder);
+  if (acctFilter.debit.bank) p.set('bank_code', acctFilter.debit.bank);
+  p.set('account_type', 'debit');
+  var cards = await api('/api/card-info?' + p.toString());
+  var debitHist = acctMeta.debit || [];
+  // 持卡人/银行选项从 card_info 全量取
+  var allDebitCards = cards.filter(function(c){return c.account_type==='debit';});
+  var holders = [...new Set(allDebitCards.map(function(c){return c.cardholder}))];
+  var banks = [...new Set(allDebitCards.map(function(c){return c.bank_code}))];
+
+  var html = '<table class="card-info-table"><thead><tr><th>' + acctHdBtn('debit','holder','持卡人',holders.map(function(n){return {v:n,t:n}})) + '</th><th>' + acctHdBtn('debit','bank','银行',banks.map(function(b){return {v:b,t:debitBankName(b)}})) + '</th><th>账户</th><th>最早</th><th>最晚</th><th>账户历史</th></tr></thead><tbody>';
+  for (var c of cards) {
+    if (c.account_type !== 'debit') continue;
+    var num = '****' + c.card_last4;
+    var h = debitHist.find(function(x) { return x.cardholder === c.cardholder && x.bank_code === c.bank_code && x.card_last4 === c.card_last4; });
+    if (!h) h = debitHist.find(function(x) { return x.cardholder === c.cardholder && x.bank_code === c.bank_code && !x.card_last4; });
+    var link = h ? '<a href="#" onclick="event.preventDefault();switchTab(\'debit\');setTimeout(function(){document.getElementById(\'df-bank\').value=\'' + esc(h.bank_code) + '\';doDebitSearch(0)},100)">查看详情</a>' : '无数据';
+    html += '<tr><td>' + esc(c.cardholder) + '</td><td>' + debitBankName(c.bank_code) + '</td><td style="font-family:monospace;">' + num + '</td><td>' + (h?h.start:'') + '</td><td>' + (h?h.end:'') + '</td><td style="font-size:12px;">' + link + '</td></tr>';
+  }
+  html += '</tbody></table>';
+  document.getElementById('ac-debit-body').innerHTML = html;
+}
+
+async function loadAcctJd() {
+  if (!acctMeta) return;
+  var jdHist = acctMeta.jd || [];
+  // 级联: 持卡人选项根据已选平台过滤; 平台选项根据已选持卡人过滤
+  var filteredByPlat = acctFilter.jd.platform ? jdHist.filter(function(x){return x.platform===acctFilter.jd.platform}) : jdHist;
+  var jholders = [...new Set(filteredByPlat.map(function(x){return x.cardholder}))].filter(function(n){return n});
+  var filteredByHolder = acctFilter.jd.holder ? jdHist.filter(function(x){return x.cardholder===acctFilter.jd.holder}) : jdHist;
+  var platforms = [...new Set(filteredByHolder.map(function(x){return x.platform}))];
+
+  var html = '<table class="card-info-table"><thead><tr><th>' + acctHdBtn('jd','holder','持卡人',jholders.map(function(n){return {v:n,t:n}})) + '</th><th>' + acctHdBtn('jd','platform','平台',platforms.map(function(p){return {v:p,t:p}})) + '</th><th>手机号</th><th>最早</th><th>最晚</th><th>账户历史</th></tr></thead><tbody>';
+  for (var h of jdHist) {
+    if (acctFilter.jd.holder && h.cardholder !== acctFilter.jd.holder) continue;
+    if (acctFilter.jd.platform && h.platform !== acctFilter.jd.platform) continue;
+    var link = '<a href="#" onclick="event.preventDefault();switchTab(\'jd\');setTimeout(function(){document.getElementById(\'jf-platform\').value=\'' + esc(h.platform) + '\';document.getElementById(\'jf-phone\').value=\'' + esc(h.phone) + '\';doJdSearch(0)},100)">查看详情</a>';
+    html += '<tr><td>' + esc(h.cardholder||'') + '</td><td>' + esc(h.platform) + '</td><td>' + esc(h.phone) + '</td><td>' + h.start + '</td><td>' + h.end + '</td><td style="font-size:12px;">' + link + '</td></tr>';
+  }
+  html += '</tbody></table>';
+  document.getElementById('ac-jd-body').innerHTML = html;
+}
+
+async function loadAcctStock() {
+  if (!acctMeta) return;
+  var stockHist = acctMeta.stock || [];
+  // 级联: 持卡人选项根据已选证券公司过滤; 证券公司选项根据已选持卡人过滤
+  var filteredByPlat = acctFilter.stock.platform ? stockHist.filter(function(x){return x.platform===acctFilter.stock.platform}) : stockHist;
+  var sholders = [...new Set(filteredByPlat.map(function(x){return x.cardholder}))];
+  var filteredByHolder = acctFilter.stock.holder ? stockHist.filter(function(x){return x.cardholder===acctFilter.stock.holder}) : stockHist;
+  var splats = [...new Set(filteredByHolder.map(function(x){return x.platform}))].filter(function(p){return p});
+
+  var html = '<table class="card-info-table"><thead><tr><th>' + acctHdBtn('stock','holder','持卡人',sholders.map(function(n){return {v:n,t:n}})) + '</th><th>' + acctHdBtn('stock','platform','证券公司',splats.map(function(p){return {v:p,t:p}})) + '</th><th>账户</th><th>最早</th><th>最晚</th><th>账户历史</th></tr></thead><tbody>';
+  for (var h of stockHist) {
+    if (acctFilter.stock.holder && h.cardholder !== acctFilter.stock.holder) continue;
+    if (acctFilter.stock.platform && h.platform !== acctFilter.stock.platform) continue;
+    var link = '<a href="#" onclick="event.preventDefault();switchTab(\'stock\');setTimeout(function(){document.getElementById(\'sf-name\').value=\'' + esc(h.cardholder) + '\';doStockSearch(0)},100)">查看详情</a>';
+    html += '<tr><td>' + esc(h.cardholder) + '</td><td>' + esc(h.platform||'银河证券') + '</td><td>' + esc(h.account) + '</td><td>' + h.start + '</td><td>' + h.end + '</td><td style="font-size:12px;">' + link + '</td></tr>';
+  }
+  html += '</tbody></table>';
+  document.getElementById('ac-stock-body').innerHTML = html;
+}
+
+async function loadAcctMeta() {
+  try {
+    acctMeta = await api('/api/account-history');
+  } catch(e) { console.error(e); acctMeta = {credit:[],debit:[],jd:[],stock:[]}; }
+  renderAcctTables();
+}
+
+// Close dropdowns on outside click
+document.addEventListener('click', function(e) {
+  if (!e.target.closest('.th-wrap')) {
+    document.querySelectorAll('.acct-hd-dd.show').forEach(function(el){ el.classList.remove('show'); });
+  }
+});
+
+async function loadCardInfo() {  const holder = document.getElementById('f-cardholder').value;
   let url = '/api/cards?';
   if (bankCode) url += 'bank_code=' + encodeURIComponent(bankCode) + '&';
   if (holder) url += 'cardholder=' + encodeURIComponent(holder) + '&';
@@ -1059,18 +1282,18 @@ function switchTab(tab) {
   document.getElementById('tab-cards').classList.toggle('active', tab === 'cards');
   document.getElementById('tab-jd').classList.toggle('active', tab === 'jd');
   document.getElementById('tab-stock').classList.toggle('active', tab === 'stock');
+  document.getElementById('tab-futu').classList.toggle('active', tab === 'futu');
   document.getElementById('credit-section').style.display = tab === 'credit' ? '' : 'none';
   document.getElementById('debit-section').style.display = tab === 'debit' ? '' : 'none';
   document.getElementById('cards-section').style.display = tab === 'cards' ? '' : 'none';
   document.getElementById('jd-section').style.display = tab === 'jd' ? '' : 'none';
   document.getElementById('stock-section').style.display = tab === 'stock' ? '' : 'none';
-  if (tab === 'debit') {
-    loadDebitMeta();
-    if (!dCurrentTotal) doDebitSearch(0);
-  }
-  if (tab === 'cards') loadCardInfo();
-  if (tab === 'jd') { loadJdMeta(); doJdSearch(0); }
-  if (tab === 'stock') { loadStockData(); }
+  document.getElementById('futu-section').style.display = tab === 'futu' ? '' : 'none';
+  if (tab === 'debit') loadDebitMeta();
+  if (tab === 'cards') loadAcctMeta();
+  if (tab === 'jd') loadJdMeta();
+  if (tab === 'stock') loadStockMeta();
+  if (tab === 'futu') loadFutuMeta();
 }
 
 // ============ 借记卡查询 ============
@@ -1495,38 +1718,45 @@ loadMeta();
 
 <!-- ====== 卡片管理 ====== -->
 <div id="cards-section" style="display:none;">
-  <div class="panel">
-    <div class="panel-title">💳 卡片管理</div>
-    <div class="form-row" style="margin-bottom:10px;">
-      <div class="form-group">
-        <label>姓名</label>
-        <input type="text" id="cf-name" placeholder="输入" style="padding:6px;border:1px solid #ccc;border-radius:6px;font-size:13px;width:100%;box-sizing:border-box;">
-      </div>
-      <div class="form-group">
-        <label>银行</label>
-        <input type="text" id="cf-bank" placeholder="输入" style="padding:6px;border:1px solid #ccc;border-radius:6px;font-size:13px;width:100%;box-sizing:border-box;">
-      </div>
-      <div class="form-group">
-        <label>类型</label>
-        <select id="cf-type" onchange="onCardTypeChange()" style="padding:6px;border:1px solid #ccc;border-radius:6px;font-size:13px;width:100%;box-sizing:border-box;">
-          <option value="">全部</option>
-          <option value="credit">信用卡</option>
-          <option value="debit">借记卡</option>
-        </select>
-      </div>
-      <div class="form-group">
-        <label>卡种</label>
-        <select id="cf-class" style="padding:6px;border:1px solid #ccc;border-radius:6px;font-size:13px;width:100%;box-sizing:border-box;">
-          <option value="">全部</option>
-          <option value="一类卡">一类卡</option>
-          <option value="二类卡">二类卡</option>
-        </select>
-      </div>
-      <div class="form-group" style="align-self:flex-end;">
-        <button class="btn btn-primary" onclick="loadCardInfo()" style="padding:6px 14px;">🔍 查询</button>
-      </div>
+  <!-- 信用卡 -->
+  <div class="panel acct-category">
+    <div class="acct-header" onclick="toggleAcctSection('credit')">
+      <span>💳 信用卡</span>
+      <span class="acct-toggle" id="acct-arrow-credit">&#9660;</span>
     </div>
-    <div id="card-info-body"></div>
+    <div id="acct-body-credit" style="display:block;">
+      <div id="ac-credit-body"></div>
+    </div>
+  </div>
+  <!-- 借记卡 -->
+  <div class="panel acct-category">
+    <div class="acct-header" onclick="toggleAcctSection('debit')">
+      <span>🏦 借记卡</span>
+      <span class="acct-toggle" id="acct-arrow-debit">&#9660;</span>
+    </div>
+    <div id="acct-body-debit" style="display:block;">
+      <div id="ac-debit-body"></div>
+    </div>
+  </div>
+  <!-- 电商 -->
+  <div class="panel acct-category">
+    <div class="acct-header" onclick="toggleAcctSection('jd')">
+      <span>🛒 电商</span>
+      <span class="acct-toggle" id="acct-arrow-jd">&#9660;</span>
+    </div>
+    <div id="acct-body-jd" style="display:block;">
+      <div id="ac-jd-body"></div>
+    </div>
+  </div>
+  <!-- 证券 -->
+  <div class="panel acct-category">
+    <div class="acct-header" onclick="toggleAcctSection('stock')">
+      <span>📈 证券</span>
+      <span class="acct-toggle" id="acct-arrow-stock">&#9660;</span>
+    </div>
+    <div id="acct-body-stock" style="display:block;">
+      <div id="ac-stock-body"></div>
+    </div>
   </div>
 </div>
 
@@ -1655,12 +1885,68 @@ loadMeta();
   </div>
 </div>
 
+<!-- ====== 富途港股 ====== -->
+<div id="futu-section" style="display:none;">
+  <div class="panel">
+    <div class="panel-title">🔍 富途港股交易查询</div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>姓名</label>
+        <select id="futu-name" onchange="doFutuSearch(0)"><option value="">全部</option></select>
+      </div>
+      <div class="form-group">
+        <label>资产类型</label>
+        <select id="futu-type" onchange="doFutuSearch(0)"><option value="">全部</option></select>
+      </div>
+      <div class="form-group">
+        <label>方向</label>
+        <select id="futu-dir" onchange="doFutuSearch(0)"><option value="">全部</option></select>
+      </div>
+      <div class="form-group">
+        <label>证券代码/名称</label>
+        <input type="text" id="futu-keyword" placeholder="代码或名称" style="padding:6px;border:1px solid #ccc;border-radius:6px;font-size:13px;width:100%;box-sizing:border-box;">
+      </div>
+      <div class="form-group">
+        <label>开始日期</label>
+        <input type="date" id="futu-start" onchange="doFutuSearch(0)">
+      </div>
+      <div class="form-group">
+        <label>结束日期</label>
+        <input type="date" id="futu-end" onchange="doFutuSearch(0)">
+      </div>
+    </div>
+    <div class="form-row" style="margin-top:14px;">
+      <button class="btn btn-primary" onclick="doFutuSearch(0)">🔍 查询</button>
+    </div>
+  </div>
+  <div class="panel">
+    <div class="results-header">
+      <div class="panel-title" style="margin:0">📋 富途交易 <span id="futu-result-count"></span></div>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th style="min-width:100px">交易日期</th><th>账户</th><th>类型</th><th>方向</th><th>代码</th><th>名称</th><th>数量</th><th>价格</th><th>金额(HKD)</th></tr>
+        </thead>
+        <tbody id="futu-result-body"></tbody>
+      </table>
+    </div>
+    <div id="futu-pager" class="pager"></div>
+  </div>
+</div>
+
 <style>
 .card-info-table { width:100%; border-collapse:collapse; font-size:13px; }
 .card-info-table th { background:#f3f4f6; padding:8px 6px; text-align:left; border-bottom:2px solid #d1d5db; font-weight:600; }
 .card-info-table td { padding:6px; border-bottom:1px solid #e5e7eb; }
 .card-info-table tr:hover td { background:#f9fafb; }
 .card-info-table .cat-tag { display:inline-block; background:#e0e7ff; color:#3730a3; border-radius:4px; padding:1px 6px; font-size:11px; }
+.acct-category { margin-top:12px; }
+.acct-header { display:flex; justify-content:space-between; align-items:center; padding:10px 14px; background:#f8fafc; border-bottom:1px solid #e5e7eb; cursor:pointer; user-select:none; font-weight:600; font-size:15px; border-radius:8px 8px 0 0; }
+.acct-header:hover { background:#f1f5f9; }
+.acct-toggle { font-size:12px; color:#9ca3af; transition:transform .2s; }
+.acct-toggle.collapsed { display:inline-block; transform:rotate(-90deg); }
+.acct-hd-dd.show { display:block !important; }
 </style>
 
 <script>
@@ -1767,20 +2053,18 @@ async function loadJdMeta() {
 }
 
 // ============ 证券交易 ============
-let _stockLoaded = false;
+let _stockMetaLoaded = false;
 function sf(id) { const e=document.getElementById('sf-'+id); return e?e.value:''; }
 
-async function loadStockData() {
-  if (_stockLoaded) return;
-  _stockLoaded = true;
+async function loadStockMeta() {
+  if (_stockMetaLoaded) return;
+  _stockMetaLoaded = true;
   try {
-    // 加载姓名和操作筛选
     var resp = await fetch('/api/stock/meta');
     var meta = await resp.json();
     fillSelect('sf-name', [{v:'',t:'全部'}].concat(meta.cardholders.map(function(n){return {v:n,t:n};})));
     fillSelect('sf-op', [{v:'',t:'全部'}].concat(meta.operations.map(function(o){return {v:o,t:o};})));
   } catch(e) { console.error(e); }
-  doStockSearch(0);
 }
 
 async function doStockSearch(page) {
@@ -1867,6 +2151,81 @@ async function loadCardInfo() {
     }
     html += '</tbody></table>';
     body.innerHTML = html;
+  } catch(e) { console.error(e); }
+}
+
+// ============ 富途港股交易 ============
+let _futuMetaLoaded = false;
+function futuF(id) { const e=document.getElementById('futu-'+id); return e?e.value:''; }
+
+async function loadFutuMeta() {
+  if (_futuMetaLoaded) return;
+  _futuMetaLoaded = true;
+  try {
+    var resp = await fetch('/api/futu/meta');
+    var meta = await resp.json();
+    fillSelect('futu-name', [{v:'',t:'全部'}].concat(meta.account_names.map(function(n){return {v:n,t:n};})));
+    fillSelect('futu-type', [{v:'',t:'全部'}].concat(meta.asset_types.map(function(t){return {v:t,t:t};})));
+    fillSelect('futu-dir', [{v:'',t:'全部'}].concat(meta.directions.map(function(d){return {v:d,t:d};})));
+  } catch(e) { console.error(e); }
+}
+
+async function doFutuSearch(page) {
+  var params = new URLSearchParams();
+  params.set('size', 50);
+  params.set('page', page);
+  if (futuF('name')) params.set('account_name', futuF('name'));
+  if (futuF('type')) params.set('asset_type', futuF('type'));
+  if (futuF('dir')) params.set('direction', futuF('dir'));
+  if (futuF('keyword')) params.set('keyword', futuF('keyword'));
+  if (futuF('start')) params.set('start_date', futuF('start'));
+  if (futuF('end')) params.set('end_date', futuF('end'));
+
+  try {
+    var resp = await fetch('/api/futu/search?' + params.toString());
+    var data = await resp.json();
+
+    document.getElementById('futu-result-count').textContent = data.total > 0 ? '\u2014 \u5171 ' + data.total.toLocaleString() + ' \u6761' : '';
+
+    var dirMap = {'buy':'买入','sell':'卖出','purchase':'申购','redeem':'赎回',
+      'ipo_apply':'IPO申购','ipo_refund':'IPO退款','ipo_allot':'IPO中签',
+      'deposit':'入金','withdrawal':'出金',
+      'fund_subscription':'基金申购','fund_redemption':'基金赎回',
+      'interest_fee':'融资利息','other':'其他'};
+    var html = '';
+    if (data.transactions && data.transactions.length) {
+      html = data.transactions.map(function(r){
+        var dir = dirMap[r.direction] || r.direction || '';
+        var buyDirs = ['buy','purchase','ipo_apply','ipo_allot','deposit','fund_redemption','ipo_refund'];
+        var dirColor = buyDirs.includes(r.direction) ? '#dc2626' : '#16a34a';
+        return '<tr>' +
+          '<td style="white-space:nowrap">' + (r.trade_date||'') + '</td>' +
+          '<td>' + esc(r.account_name||'') + '</td>' +
+          '<td>' + esc(r.asset_type||'') + '</td>' +
+          '<td style="font-weight:600;color:' + dirColor + ';white-space:nowrap">' + dir + '</td>' +
+          '<td>' + (r.symbol||'') + '</td>' +
+          '<td>' + esc(r.name||'') + '</td>' +
+          '<td>' + (r.quantity!=null?Number(r.quantity).toLocaleString():'') + '</td>' +
+          '<td>' + (r.price!=null?Number(r.price).toFixed(4):'') + '</td>' +
+          '<td style="font-weight:600;text-align:right;white-space:nowrap">' + (r.amount_hkd!=null?Number(r.amount_hkd).toLocaleString(undefined,{minimumFractionDigits:2}):'') + '</td>' +
+          '</tr>';
+      }).join('');
+    } else {
+      html = '<tr><td colspan="9" style="text-align:center;color:#9ca3af;padding:20px;">\u6682\u65e0\u6570\u636e</td></tr>';
+    }
+    document.getElementById('futu-result-body').innerHTML = html;
+
+    var totalPages = Math.ceil(data.total / 50);
+    var el = document.getElementById('futu-pager');
+    if (totalPages <= 1) { el.innerHTML = ''; return; }
+    var h = '';
+    h += '<button ' + (page===0?'disabled':'') + ' onclick="doFutuSearch(0)">\u00ab \u9996\u9875</button>';
+    h += '<button ' + (page===0?'disabled':'') + ' onclick="doFutuSearch(' + (page-1) + ')">\u2039 \u4e0a\u4e00\u9875</button>';
+    h += '<span class="page-info">\u7b2c ' + (page+1) + '/' + totalPages + ' \u9875\uff0c\u5171 ' + data.total.toLocaleString() + ' \u6761</span>';
+    h += '<button ' + (page>=totalPages-1?'disabled':'') + ' onclick="doFutuSearch(' + (page+1) + ')">\u4e0b\u4e00\u9875 \u203a</button>';
+    h += '<button ' + (page>=totalPages-1?'disabled':'') + ' onclick="doFutuSearch(' + (totalPages-1) + ')">\u672b\u9875 \u00bb</button>';
+    h += '<span class="page-jump">\u8df3\u8f6c <input type="number" min="1" max="' + totalPages + '" value="' + (page+1) + '" onchange="var v=parseInt(this.value);if(v>=1&&v<=' + totalPages + ')doFutuSearch(v-1)" style="width:50px;padding:3px 4px;font-size:12px;border:1px solid #d1d5db;border-radius:4px;text-align:center;"> \u9875</span>';
+    el.innerHTML = h;
   } catch(e) { console.error(e); }
 }
 </script>
