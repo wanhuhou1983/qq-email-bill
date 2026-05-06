@@ -1,0 +1,43 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# Docker
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# 环境变量（通过挂载方式进容器）
+.env
+
+# 临时/调试脚本
+*.ps1
+*.sh
+*.bat
+*_check*.py
+*_verify*.py
+test_*.py
+test_*.js
+
+# 敏感数据
+boc_statement.pdf
+zheshang_qp.txt
+
+# 输出/日志
+*.log
+boc_output/
+qr_code/
+
+# 其他目录（不需要进容器）
+node_modules/
+bank-loader/
+scripts/
+docs/

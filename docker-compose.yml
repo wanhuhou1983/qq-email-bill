@@ -1,0 +1,30 @@
+# ============================================
+# 信用卡账单查询系统 - Docker Compose
+# Mac Mini 部署（单独 web 服务，PG 已存在）
+# ============================================
+services:
+  web:
+    build: .
+    container_name: bill-web
+    restart: always
+    ports:
+      - "8765:8765"
+    environment:
+      # 连接 Mac 宿主机上已有的 PG（通过 host.docker.internal）
+      - DB_HOST=host.docker.internal
+      - DB_PORT=5433
+      - DB_USER=infohub
+      - DB_PASSWORD=infohub123
+      - DB_NAME=infohub
+      # 只读连接（AI 查询用，与读写一致即可）
+      - READER_HOST=host.docker.internal
+      - READER_PORT=5433
+      - READER_USER=infohub
+      - READER_PASSWORD=infohub123
+      - READER_NAME=infohub
+      # DeepSeek AI API Key（通过 .env 覆盖）
+      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY:-}
+    env_file:
+      - .env
+    volumes:
+      - ./.env:/app/.env:ro

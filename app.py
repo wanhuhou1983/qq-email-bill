@@ -11,7 +11,11 @@ from fastapi.responses import FileResponse
 
 app = FastAPI(title="信用卡账单查询", version="1.2.0")
 app.add_middleware(CORSMiddleware,
-                   allow_origins=["http://localhost:8765", "http://127.0.0.1:8765"],
+                   allow_origins=[
+                       "http://localhost:8765",
+                       "http://127.0.0.1:8765",
+                       "http://100.77.50.100:8765",
+                   ],
                    allow_credentials=True,
                    allow_methods=["*"],
                    allow_headers=["*"])
