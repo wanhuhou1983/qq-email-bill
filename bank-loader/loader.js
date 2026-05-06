@@ -21,11 +21,16 @@ const iconv = require("iconv-lite");
 // ============ 全局配置 ============
 
 const IMAP_AUTH = {
-  user: "85657238@qq.com",
-  pass: "nepaqqspysbncafe",
+  user: process.env.QQ_EMAIL_ACCOUNT || "85657238@qq.com",
+  pass: process.env.QQ_EMAIL_AUTH_CODE || "nepaqqspysbncafe",
 };
 
-const PG_URI = "postgresql://postgres:DB_PASSWORD@localhost:5432/postgres";
+const PG_USER = process.env.DB_USER || "postgres";
+const PG_PASS = process.env.DB_PASSWORD || "postgres";
+const PG_HOST = process.env.DB_HOST || "localhost";
+const PG_PORT = process.env.DB_PORT || "5432";
+const PG_NAME = process.env.DB_NAME || "postgres";
+const PG_URI = `postgresql://${PG_USER}:${PG_PASS}@${PG_HOST}:${PG_PORT}/${PG_NAME}`;
 
 // ============ 编码解码工具 ============
 
