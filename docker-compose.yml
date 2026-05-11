@@ -1,6 +1,6 @@
 # ============================================
-# 信用卡账单查询系统 - Docker Compose
-# Mac Mini 部署（单独 web 服务，PG 已存在）
+# 账单查询系统 - Docker Compose
+# 本地部署（WSL2 Docker，PG 用同网络的 quant-postgres）
 # ============================================
 services:
   web:
@@ -10,15 +10,15 @@ services:
     ports:
       - "8765:8765"
     environment:
-      # 连接 Mac 宿主机上已有的 PG（通过 host.docker.internal）
-      - DB_HOST=host.docker.internal
-      - DB_PORT=5433
+      # 连接 quant-network 中已有的 quant-postgres
+      - DB_HOST=quant-postgres
+      - DB_PORT=5432
       - DB_USER=infohub
       - DB_PASSWORD=infohub123
       - DB_NAME=infohub
       # 只读连接（AI 查询用，与读写一致即可）
-      - READER_HOST=host.docker.internal
-      - READER_PORT=5433
+      - READER_HOST=quant-postgres
+      - READER_PORT=5432
       - READER_USER=infohub
       - READER_PASSWORD=infohub123
       - READER_NAME=infohub
@@ -28,3 +28,9 @@ services:
       - .env
     volumes:
       - ./.env:/app/.env:ro
+    networks:
+      - quant-network
+
+networks:
+  quant-network:
+    external: true

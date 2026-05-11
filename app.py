@@ -1,5 +1,5 @@
 """
-信用卡账单查询系统 - FastAPI 入口
+账单查询系统 - FastAPI 入口
 """
 import os
 from dotenv import load_dotenv
@@ -14,7 +14,7 @@ app.add_middleware(CORSMiddleware,
                    allow_origins=[
                        "http://localhost:8765",
                        "http://127.0.0.1:8765",
-                       "http://100.77.50.100:8765",
+                       "http://100.96.28.120:8765",
                    ],
                    allow_credentials=True,
                    allow_methods=["*"],

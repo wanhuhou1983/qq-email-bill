@@ -1,6 +1,6 @@
 # ============================================
-# 信用卡账单查询系统 - Dockerfile
-# 部署到 Mac Mini Docker，连接已有 PG
+# 账单查询系统 - Dockerfile
+# WSL2 Docker 部署，连接同网络的 quant-postgres
 # ============================================
 FROM python:3.13-slim
 
