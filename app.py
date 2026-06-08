@@ -1,4 +1,4 @@
-"""
+﻿"""
 账单查询系统 - FastAPI 入口
 """
 import os
@@ -27,11 +27,13 @@ from api.search import router as search_router
 from api.meta import router as meta_router
 from api.export import router as export_router
 from api.imports import router as import_router
+from api.collect import router as collect_router
 
 app.include_router(search_router, prefix="/api")
 app.include_router(meta_router, prefix="/api")
 app.include_router(export_router, prefix="/api")
 app.include_router(import_router, prefix="/api")
+app.include_router(collect_router, prefix="/api")
 
 @app.get("/")
 def index():

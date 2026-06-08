@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
@@ -254,6 +254,7 @@
     <button id="tab-stock" onclick="switchTab('stock')">证券交易查询</button>
     <button id="tab-futu" onclick="switchTab('futu')">富途港股</button>
     <button id="tab-cards" onclick="switchTab('cards')">账户管理</button>
+    <button id="tab-collect" onclick="switchTab('collect')">账单采集</button>
   </div>
 
   <!-- ====== 信用卡 ====== -->
@@ -1283,17 +1284,20 @@ function switchTab(tab) {
   document.getElementById('tab-jd').classList.toggle('active', tab === 'jd');
   document.getElementById('tab-stock').classList.toggle('active', tab === 'stock');
   document.getElementById('tab-futu').classList.toggle('active', tab === 'futu');
+  document.getElementById('tab-collect').classList.toggle('active', tab === 'collect');
   document.getElementById('credit-section').style.display = tab === 'credit' ? '' : 'none';
   document.getElementById('debit-section').style.display = tab === 'debit' ? '' : 'none';
   document.getElementById('cards-section').style.display = tab === 'cards' ? '' : 'none';
   document.getElementById('jd-section').style.display = tab === 'jd' ? '' : 'none';
   document.getElementById('stock-section').style.display = tab === 'stock' ? '' : 'none';
   document.getElementById('futu-section').style.display = tab === 'futu' ? '' : 'none';
+  document.getElementById('collect-section').style.display = tab === 'collect' ? '' : 'none';
   if (tab === 'debit') loadDebitMeta();
   if (tab === 'cards') loadAcctMeta();
   if (tab === 'jd') loadJdMeta();
   if (tab === 'stock') loadStockMeta();
   if (tab === 'futu') loadFutuMeta();
+  if (tab === 'collect') refreshCollectStatus();
 }
 
 // ============ 借记卡查询 ============
@@ -2228,7 +2232,69 @@ async function doFutuSearch(page) {
     el.innerHTML = h;
   } catch(e) { console.error(e); }
 }
+
+// ============ 信用卡账单采集 ============
+async function refreshCollectStatus() {
+  document.getElementById('collect-summary').innerHTML = '加载中...';
+  try {
+    let r = await fetch('/api/collect/status');
+    let d = await r.json();
+    document.getElementById('collect-summary').innerHTML = 
+      d.total_banks + ' 家银行, ' + d.total_emails + ' 封邮件, ' + d.total_tx + ' 条交易';
+    
+    let thead = document.querySelector('#collect-table thead tr');
+    thead.innerHTML = '<th>银行</th><th>卡末4位</th><th>持卡人</th><th>邮件</th><th>已入库</th><th>最新日期</th><th>最早日期</th><th>操作</th>';
+    
+    let tb = document.querySelector('#collect-table tbody');
+    tb.innerHTML = '';
+    for (let b of d.banks) {
+      for (let ch of b.cardholders) {
+        let tr = tb.insertRow();
+        tr.innerHTML = '<td><b>' + b.bank_name + '</b></td>' +
+          '<td>' + ch.card_last4 + '</td>' +
+          '<td>' + ch.cardholder + '</td>' +
+          '<td style="text-align:center">' + b.email_count + '</td>' +
+          '<td style="text-align:center;' + (ch.tx_count > 0 ? 'color:#22c55e' : 'color:#ef4444') + '">' + ch.tx_count + '</td>' +
+          '<td>' + (ch.latest_date || '-') + '</td>' +
+          '<td>' + (ch.earliest_date || '-') + '</td>' +
+          '<td><button onclick="collectBank(\'' + b.bank_code + '\')" style="padding:2px 10px;font-size:12px;">更新</button></td>';
+      }
+    }
+  } catch(e) {
+    document.getElementById('collect-summary').innerHTML = '加载失败: ' + e.message;
+  }
+}
+
+async function collectBank(code) {
+  let btns = document.querySelectorAll('#collect-table button');
+  btns.forEach(b => b.disabled = true);
+  try {
+    let r = await fetch('/api/collect/run/' + code, { method: 'POST' });
+    let d = await r.json();
+    if (d.ok) { alert(code + ' 采集成功: ' + d.message); refreshCollectStatus(); }
+    else { alert(code + ' 失败: ' + (d.error || d.message)); }
+  } catch(e) {
+    alert('请求失败: ' + e.message);
+  }
+  btns.forEach(b => b.disabled = false);
+}
 </script>
 
-</body>
+
+<!-- ============ 信用卡账单采集 ============ -->
+<div id="collect-section" style="display:none">
+  <div class="panel">
+    <div class="panel-title">📬 信用卡账单采集状态
+      <button onclick="refreshCollectStatus()" style="margin-left:12px;padding:4px 12px;font-size:13px;">🔄 刷新</button>
+    </div>
+    <div id="collect-summary" style="margin-bottom:12px;color:#666;font-size:13px;"></div>
+    <div id="collect-table-wrap" style="overflow-x:auto;">
+      <table id="collect-table" style="width:100%;border-collapse:collapse;font-size:13px;">
+        <thead><tr style="background:#f5f5f5;font-weight:600;"></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+</div></body>
 </html>
+
