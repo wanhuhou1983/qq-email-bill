@@ -98,3 +98,23 @@ Parse QQ email credit card bills into structured transactions with self-verifica
 - `parsers/boc.js` (rewritten)
 - `verify_bill.js` (added BOC verifier)
 
+
+## 2026-06-16 (2): BOC "无法足额扣款" edge case fix
+
+### Problem
+4 months (2026-01 to 2026-04) had ~85-100 RMB verification failures.
+Root cause: pypdf text extraction misaligns columns when "无法足额扣款，请补足账户余额"
+lines appear. The orphan amount (e.g., 85.92) gets attached to the wrong line.
+
+### Fix
+Added **pre-processing phase** in `boc_pdf.py`:
+1. Detect "无法足额扣款" / "请补足" pattern
+2. Find subsequent "户余额 XX.XX" line
+3. Merge the orphan amount into the preceding date-only transaction row
+4. Skip the "扣款" and "户余额" lines from normal parsing
+
+### Result
+- **30/30 (100%)** all months verified OK
+- Previous 4 failures now pass correctly
+- No regression on other 26 months
+
