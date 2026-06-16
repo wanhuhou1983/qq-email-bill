@@ -5,6 +5,8 @@
  * 格式: HTML表格，列：交易日期 | 记账日 | 摘要(类型前缀) | 交易金额 | 币种 | 入账金额 | 币种
  * 摘要前缀: (消费)→SPEND, (赠送)→REFUND, (还款)→REPAY, (退款)→REFUND
  */
+// VERIFY: logic=B - formula: statement=prevBalance-prevPayment+spend-adjustment+interest+cashInterest
+
 "use strict";
 
 const bank = {

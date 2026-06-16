@@ -6,6 +6,8 @@
  * 金额方向: (存入) 前缀需转负数
  * 注意: 光大可能有多个卡号混合
  */
+// VERIFY: logic=CEB - excludes installment tx from spend (already in prevBalance)
+
 "use strict";
 
 const bank = {

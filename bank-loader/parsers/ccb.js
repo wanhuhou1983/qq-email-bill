@@ -6,6 +6,8 @@
  * 金额: CNY 21.80 或 CNY -6,901.82（负号在金额前）
  * 持卡人: 赵健伟
  */
+// VERIFY: logic=CCB - uses parser summary.totalSpend/Repay for formula (transaction list may miss fees/interest)
+
 "use strict";
 
 const bank = {

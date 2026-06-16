@@ -5,6 +5,9 @@
  * 格式: 交易日 | 记账日 | 摘要 | 金额(¥)
  * 金额: ¥ 10.94 / ¥ -2.00（负号在¥后）
  */
+// VERIFY: logic=PAB - formula: statement=prevBalance-prevPayment+spend+adjustment+interest
+// Old statements (2025-12/2026-01) lack formula line; skipped gracefully
+
 "use strict";
 
 const bank = {

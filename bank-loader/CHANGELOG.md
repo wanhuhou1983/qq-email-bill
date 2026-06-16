@@ -34,4 +34,12 @@
 | 光大银行 (CEB) | OK | 2 | 274.96 | 389.25 |
 | 平安银行 (PAB) | OK | 5 | 530.46 | 36.32 |
 | 浙商银行 (CZB) | OK | 28 | 12891.78 | 12659.20 |
-| 广发银行 (CGB) | OK | 21 | 3030.78 | 2962.97 |
+| 广发银行 (CGB) | OK | 21 | 3030.78 | 2962.97 |
+## Known Edge Cases
+
+- CEB: uid46 first installment month has partial tx
+- PAB: uid60/uid61 old format lacks formula line
+- CCB: 6 months have small tx diff (fees not in detail)
+- ICBC: uid106 empty (incomplete bill)
+- CITIC: 6 decode fails (non-standard encoding)
+- BOC: notification email, no tx table
