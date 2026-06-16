@@ -60,7 +60,7 @@ const bank = {
       // 描述 = 找有中文且非日期/金额的列
       let desc = "";
       for (const cell of cells) {
-        if (/[\u4e00-\u9fff]/.test(cell) && !/^\d{4}-\d{2}-\d{2}$/.test(cell) && !cell.includes("¥") && !cell.includes("&yen;") && !/^\d{4}$/.test(cell)) {
+        if (cell.length > 2 && !/^\d{4}-\d{2}-\d{2}$/.test(cell) && !cell.includes("¥") && !cell.includes("&yen;") && !/^\d{4}$/.test(cell)) {
           desc = cell.substring(0, 200);
           break;
         }
@@ -80,7 +80,23 @@ const bank = {
     return trans;
   },
 
-  _extractBillInfo(html, envelope, transactions) {
+ _extractBillInfo(html, envelope, transactions) {
+    const text = html.replace(/<[^>]+>/g, " ").replace(/&yen;/g, "¥").replace(/&nbsp;/g, " ").replace(/\s+/g, " ").trim();
+    
+    // Extract formula: ¥530.08 ¥35.94 ¥35.94 ¥530.46 ¥0.38 ¥0.00
+    // Indices: 0=本期应还, 1=上期账单, 2=上期还款, 3=本期消费, 4=调整, 5=利息
+    const summary = {};
+    const formulaRe = /¥\s*([\d,]+\.\d{2})\s+¥\s*([\d,]+\.\d{2})\s+¥\s*([\d,]+\.\d{2})\s+¥\s*([\d,]+\.\d{2})\s+¥\s*([\d,]+\.\d{2})\s+¥\s*([\d,]+\.\d{2})/;
+    const fm = text.match(formulaRe);
+    if (fm) {
+      summary.statementBalance = parseFloat(fm[1].replace(/,/g, ""));
+      summary.prevBalance     = parseFloat(fm[2].replace(/,/g, ""));
+      summary.prevPayment     = parseFloat(fm[3].replace(/,/g, ""));
+      summary.totalSpend      = parseFloat(fm[4].replace(/,/g, ""));
+      summary.adjustment      = parseFloat(fm[5].replace(/,/g, ""));
+      summary.interest        = parseFloat(fm[6].replace(/,/g, ""));
+    }
+    
     return {
       billDate: null,
       dueDate: null,
@@ -89,8 +105,10 @@ const bank = {
       cycleEnd: transactions.length > 0 ? transactions[transactions.length - 1].trans_date : null,
       cardLast4: "",
       cardholder: this.defaultCardholder,
+      summary: summary,
     };
   },
+
 };
 
 module.exports = bank;
