@@ -1,0 +1,1 @@
+var F=require('fs');var S=F.readFileSync('./parsers/pab.js','utf-8');S=S.replace('if (/[\\u4e00-\\u9fff]/.test(cell)','if (cell.length ;F.writeFileSync('./parsers/pab.js',S,'utf-8');console.log('PAB patched, bytes:'+S.length); 

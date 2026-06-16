@@ -1,0 +1,1 @@
+var F=require('fs');var S=F.readFileSync('./parsers/cmbc.js','utf-8');console.log('has-seen:',S.indexOf('seen'),'has-key:',S.indexOf('key'); 

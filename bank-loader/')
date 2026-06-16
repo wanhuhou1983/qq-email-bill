@@ -1,0 +1,1 @@
+var F=require('fs');var S=F.readFileSync('./parsers/pab.js','utf-8');console.log('fixed:',S.includes('cell.length ,'bytes:',S.length); 

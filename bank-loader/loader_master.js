@@ -12,23 +12,20 @@
  */
 "use strict";
 
-try { require("dotenv").config({ path: require("path").join(__dirname, "..", ".env") }); } catch(e) {}
-
 const { ImapFlow } = require("imapflow");
 const { Client } = require("pg");
 const fs = require("fs");
 const path = require("path");
 const iconv = require("iconv-lite");
-const { verifyBill } = require("./verify_bill");
 
 // ============ 全局配置 ============
 
 const IMAP_AUTH = {
-  user: process.env.QQ_EMAIL_ACCOUNT || "85657238@qq.com",
-  pass: process.env.QQ_EMAIL_AUTH_CODE || "nepaqqspysbncafe",
+  user: "85657238@qq.com",
+  pass: "nepaqqspysbncafe",
 };
 
-const PG_URI = "postgresql://postgres:Quant@2026!@127.0.0.1:5432/family_finance";
+const PG_URI = "postgresql://postgres:DB_PASSWORD@localhost:5432/postgres";
 
 // ============ 编码解码工具 ============
 
@@ -193,8 +190,6 @@ const PG = {
 
   /** 批量插入交易明细（去重） */
   async insertTransactions(billId, bank, transactions) {
-    // Delete old txns first to avoid ON CONFLICT falsely deduping genuine duplicate rows
-    await this.query('DELETE FROM credit_card_transactions WHERE bill_id = ' + billId);
     let inserted = 0;
     for (const t of transactions) {
       const tt = this._detectType(t.amount, t.description);
@@ -205,7 +200,7 @@ const PG = {
             trans_date, post_date, description, category,
             amount, currency, trans_type, is_installment, source, raw_line_text)
            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,'email',$15)
-           ON CONFLICT (bank_code, bill_id, trans_date, post_date, card_last4, description, amount) DO NOTHING`,
+           ON CONFLICT (bank_code, trans_date, post_date, card_last4, description, amount) DO NOTHING`,
           [
             billId, bank.code, t.cardholder || bank.defaultCardholder,
             t.card_last4 || bank.defaultCardLast4, "",
@@ -324,7 +319,6 @@ async function importBank(bank) {
     const raw = msg.source.toString("binary");
     const subject = msg.envelope?.subject || "";
     console.log(`  主题: ${subject}`);
-    var decodedHtml = null;
 
     // 特殊处理: PDF附件银行（如中行BOC）
     let result;
@@ -341,7 +335,7 @@ async function importBank(bank) {
       }
     } else {
       // 常规HTML解码
-      decodedHtml = decoders.decodeEmail(raw);
+      const decodedHtml = decoders.decodeEmail(raw);
       if (!decodedHtml) {
         console.log("  ⚠ 无法解码\n");
         continue;
@@ -352,25 +346,6 @@ async function importBank(bank) {
       } catch (e) {
         console.log(`  ⚠ 解析失败: ${e.message}\n`);
         continue;
-      }
-    }
-
-    // VERIFY: self-check summary vs details
-    if (result && result.transactions && result.transactions.length > 0 && bank.code && decodedHtml) {
-      try {
-        var vrf = verifyBill(bank.code, decodedHtml, result.transactions, result.billInfo);
-        if (!vrf.skipped && !vrf.ok) {
-          console.log("  [WARN] Verify FAIL (" + vrf.logic + " logic):");
-          for (var wi = 0; wi < vrf.warnings.length; wi++) {
-            console.log("     " + vrf.warnings[wi]);
-          }
-        } else if (!vrf.skipped && vrf.ok) {
-          var sb = vrf.summary.statementBalance;
-          var extra = (sb != null ? " bal=" + sb : "");
-          console.log("  [OK] Verify PASS spend=" + vrf.calculated.totalSpend + " repay=" + vrf.calculated.totalRepay + extra);
-        }
-      } catch (ve) {
-        console.log("  [DEBUG] verify error: " + (ve.message || ve));
       }
     }
 
