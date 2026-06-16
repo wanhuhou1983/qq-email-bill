@@ -8,13 +8,6 @@
  */
 "use strict";
 
-// 卡号→持卡人映射
-const CARDHOLDER_MAP = {
-  "6258": "赵健伟",
-  "1855": "吴大军",
-  "5099": "钱伟琴",
-};
-
 const bank = {
   code: "CCB",
   name: "建设银行",
@@ -40,6 +33,7 @@ const bank = {
       .trim();
 
     const trans = [];
+    // dedup removed
 
     // 交易明细区
     const idx = text.search(/交易明细/);
@@ -48,7 +42,7 @@ const bank = {
 
     // 格式: YYYY-MM-DD YYYY-MM-DD 4位数字 描述 CNY 金额 CNY 金额
     // 金额可以带负号: -6,901.82
-    const rowRe = /(\d{4}-\d{2}-\d{2})\s+(\d{4}-\d{2}-\d{2})\s+(\d{4})\s+(.+?)\s+CNY\s+(-?\d[\d,]*\.?\d*)\s+CNY\s+(-?\d[\d,]*\.?\d*)/g;
+    const rowRe = /(\d{4}-\d{2}-\d{2})\s+(\d{4}-\d{2}-\d{2})\s+(\d{4})\s+([\u4e00-\u9fa5A-Za-z0-9(),.\/\- ]+?)\s+CNY\s+(-?\d[\d,]*\.?\d*)\s+CNY\s+(-?\d[\d,]*\.?\d*)/g;
     let m;
 
     while ((m = rowRe.exec(section)) !== null) {
@@ -56,22 +50,18 @@ const bank = {
       const postDate = m[2];
       const cardLast4 = m[3];
       const desc = m[4].trim().replace(/\s+/g, "").substring(0, 200);
-      const amount = parseFloat(m[6].replace(/,/g, "")); // 用第二个CNY金额（结算金额）
+      const amount = parseFloat(m[5].replace(/,/g, ""));
 
       if (!desc || Math.abs(amount) > 5000000) continue;
 
-      // 交易类型
-      let transType = "SPEND";
-      if (amount < 0) {
-        if (desc.includes("还款") || desc.includes("入账")) transType = "REPAY";
-        else if (desc.includes("退款") || desc.includes("退货")) transType = "REFUND";
-        else transType = "REPAY";
-      }
-
+      
+            var transType = amount < 0 ? "REPAY" : "SPEND";
       trans.push({
-        trans_date: transDate, post_date: postDate,
-        description: desc, amount, card_last4: cardLast4,
-        cardholder: CARDHOLDER_MAP[cardLast4] || bank.defaultCardholder,
+        trans_date: transDate,
+        post_date: postDate,
+        description: desc,
+        amount: amount,
+        card_last4: cardLast4,
         trans_type: transType,
       });
     }
@@ -103,7 +93,18 @@ const bank = {
     const billDate = cycleEnd;
     const billCycle = billDate ? billDate.slice(0, 7) : null;
 
-    return { billDate, dueDate, billCycle, cycleStart, cycleEnd, cardLast4: "", cardholder };
+        // Extract summary: 人民币（CNY） 上期 消费 还款 本期
+    const sumMatch = text.match(/人民币[^0-9]*?([\d,]+\.\d{2})\s+([\d,]+\.\d{2})\s+([\d,]+\.\d{2})\s+([\d,]+\.\d{2})/);
+    var summary = {};
+    if (sumMatch) {
+      summary = {
+        prevBalance: parseFloat(sumMatch[1].replace(/,/g, "")),
+        totalSpend: parseFloat(sumMatch[2].replace(/,/g, "")),
+        totalRepay: parseFloat(sumMatch[3].replace(/,/g, "")),
+        statementBalance: parseFloat(sumMatch[4].replace(/,/g, "")),
+      };
+    }
+    return { billDate, dueDate, billCycle, cycleStart, cycleEnd, cardLast4: "", cardholder, summary: summary, rawRowCount: transactions.length };
   },
 };
 
