@@ -77,15 +77,20 @@ var verifiers = {
   CCB: {
     extractSummary: function(html) {
       var text = cleanText(html);
-      var prevBalance = extractAmt(text, /上期账单余额[^0-9]*?([\d,]+\.\d{2})/);
-      var statementBalance = extractAmt(text, /应还款额\/溢缴款[^0-9]*?(-?[\d,]+\.\d{2})/);
-      var minPayment = extractAmt(text, /最低还款额[^0-9]*?([\d,]+\.\d{2})/);
-      if (!statementBalance) {
-        statementBalance = extractAmt(text, /本期全部应还款额[^0-9]*?([\d,]+\.\d{2})/);
+      var result = {};
+      var eq = text.match(/([\d,]]+\.\d{2})\s+([\d,]]+\.\d{2})\s+([\d,]]+\.\d{2})\s+([\d,]]+\.\d{2})/);
+      if (eq) {
+        result.prevBalance = parseFloat(eq[1].replace(/,/g, ''));
+        result.totalSpend = parseFloat(eq[2].replace(/,/g, ''));
+        result.prevPayment = parseFloat(eq[3].replace(/,/g, ''));
+        result.statementBalance = parseFloat(eq[4].replace(/,/g, ''));
       }
-      return { prevBalance: prevBalance, statementBalance: statementBalance, minPayment: minPayment };
+      // fallback to old extraction
+      if (!result.prevBalance) result.prevBalance = extractAmt(text, /\u4e0a\u671f\u8d26\u5355\u4f59\u989d[^\d]*?([\d,]]+\.\d{2})/);
+      if (!result.statementBalance) result.statementBalance = extractAmt(text, /\u5e94\u8fd8\u6b3e\u989d[^\d]*?(-?[\d,]]+\.\d{2})/);
+      return result;
     },
-    logic: "B",
+    logic: "CCB",
   },
 
   // ============ CEB ============
@@ -137,23 +142,16 @@ var verifiers = {
     extractSummary: function(html) {
       var text = cleanText(html);
       var result = {};
-      var cl = text.match(/信用额度[^0-9]*?([\d,]+)\s+([\d,]+\.?\d*)/);
-      if (cl) {
-        result.creditLimit = parseFloat(cl[1].replace(/,/g, ""));
-        result.minPayment = parseFloat(cl[2].replace(/,/g, ""));
-      }
-      var fm = text.match(/本期应还金额\s*New\s*Balance[^0-9]*?/);
-      if (fm) {
-        var rest = text.substring(fm.index, fm.index + 300);
-        var amounts = rest.match(/[\u00a5\uffe5]\s*[\d,]+\.\d{2}/g);
-        if (amounts && amounts.length >= 4) {
-          result.statementBalance = parseFloat(amounts[0].replace(/[^\d.]/g, "").replace(/,/g, ""));
-          result.prevBalance = parseFloat(amounts[1].replace(/[^\d.]/g, "").replace(/,/g, ""));
-        }
+      var eq = text.match(/[\u00a5\uffe5]\s*([\d,]]+\.\d{2})\s*=\s*[\u00a5\uffe5]\s*([\d,]]+\.\d{2})\s*－\s*[\u00a5\uffe5]\s*([\d,]]+\.\d{2})\s*\+\s*[\u00a5\uffe5]\s*([\d,]]+\.\d{2})/);
+      if (eq) {
+        result.statementBalance = parseFloat(eq[1].replace(/,/g, ''));
+        result.prevBalance = parseFloat(eq[2].replace(/,/g, ''));
+        result.prevPayment = parseFloat(eq[3].replace(/,/g, ''));
+        result.totalSpend = parseFloat(eq[4].replace(/,/g, ''));
       }
       return result;
     },
-    logic: "B",
+    logic: "CZB",
   },
 
   // ============ ICBC ============
@@ -187,7 +185,7 @@ var verifiers = {
       result.statementBalance = extractAmt(text, /本期应还金额[^0-9]*?([\d,]+\.?\d*)/);
       return result;
     },
-    logic: "B",
+    logic: "PAB",
   },
 };
 
@@ -247,6 +245,41 @@ function verifyBill(bankCode, html, transactions, billInfo) {
       var expected=Math.round((summary.prevBalance+cebSpend-cebRepay)*100)/100;
       var d=Math.abs(summary.statementBalance-expected);
       if(d>1.0)warnings.push("CEB: "+summary.prevBalance+" +"+cebSpend+" -"+cebRepay+" ="+expected+" vs"+summary.statementBalance+" d="+d.toFixed(2));
+    }
+  } else if (v.logic === "CCB") {
+    var billSpend = summary.totalSpend != null ? summary.totalSpend : calc.totalSpend;
+    var billRepay = summary.totalRepay != null ? summary.totalRepay : calc.totalRepay;
+    if (summary.prevBalance != null && summary.statementBalance != null) {
+      var expected = Math.round((summary.prevBalance + billSpend - billRepay) * 100) / 100;
+      var d = Math.abs(summary.statementBalance - expected);
+      if (d > 1.0)
+        warnings.push("CCB: " + summary.prevBalance + " +" + billSpend + " -" + billRepay + " =" + expected + " vs" + summary.statementBalance + " d=" + d.toFixed(2));
+      else {
+        var txD = Math.abs(billSpend - calc.totalSpend);
+        if (txD > 0.5) warnings.push("CCB-tx: billSpend="+billSpend+" calcSpend="+calc.totalSpend+" diff="+txD.toFixed(2));
+      }
+    }
+  } else if (v.logic === "CZB") {
+    if (summary.prevBalance != null && summary.statementBalance != null) {
+      var expected = Math.round((summary.prevBalance - (summary.prevPayment || 0) + calc.totalSpend - calc.totalRepay) * 100) / 100;
+      var d = Math.abs(summary.statementBalance - expected);
+      if (d > 1.0)
+        warnings.push("CCB: " + summary.prevBalance + " -" + (summary.prevPayment || 0) + " +" + calc.totalSpend + " -" + calc.totalRepay + " =" + expected + " vs" + summary.statementBalance + " d=" + d.toFixed(2));
+    }
+  } else if (v.logic === "CZB") {
+    if (summary.prevBalance != null && summary.statementBalance != null) {
+      var expected = Math.round((summary.prevBalance - (summary.prevPayment || 0) + calc.totalSpend - calc.totalRepay) * 100) / 100;
+      var d = Math.abs(summary.statementBalance - expected);
+      if (d > 1.0)
+        warnings.push("CZB: " + summary.prevBalance + " -" + (summary.prevPayment || 0) + " +" + calc.totalSpend + " -" + calc.totalRepay + " =" + expected + " vs" + summary.statementBalance + " d=" + d.toFixed(2));
+    }
+  } else if (v.logic === "PAB") {
+    // PAB: prevBalance from formula, skip old format
+    if (summary.prevBalance != null && summary.statementBalance != null) {
+      var expected = Math.round((summary.prevBalance - (summary.prevPayment || 0) + calc.totalSpend + (summary.adjustment || 0) + (summary.interest || 0)) * 100) / 100;
+      var d = Math.abs(summary.statementBalance - expected);
+      if (d > 1.0)
+        warnings.push("PAB: " + summary.prevBalance + " -" + (summary.prevPayment || 0) + " +" + calc.totalSpend + " +" + (summary.adjustment || 0) + " +" + (summary.interest || 0) + " =" + expected + " vs" + summary.statementBalance + " d=" + d.toFixed(2));
     }
   } else if (v.logic === "B") {
     if (summary.prevBalance != null && summary.statementBalance != null) {

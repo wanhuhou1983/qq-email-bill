@@ -42,7 +42,7 @@ const bank = {
 
     // 格式: YYYY-MM-DD YYYY-MM-DD 4位数字 描述 CNY 金额 CNY 金额
     // 金额可以带负号: -6,901.82
-    const rowRe = /(\d{4}-\d{2}-\d{2})\s+(\d{4}-\d{2}-\d{2})\s+(\d{4})\s+([\u4e00-\u9fa5A-Za-z0-9(),.\/\- ]+?)\s+CNY\s+(-?\d[\d,]*\.?\d*)\s+CNY\s+(-?\d[\d,]*\.?\d*)/g;
+    const rowRe = /(\d{4}-\d{2}-\d{2})\s+(\d{4}-\d{2}-\d{2})\s+(\d{4})\s+((?:(?!CNY)[\u4e00-\u9fa5A-Za-z0-9(),.\/\- ])+)\s+CNY\s+(-?\d[\d,]*\.?\d*)\s+CNY\s+(-?\d[\d,]*\.?\d*)/g;
     let m;
 
     while ((m = rowRe.exec(section)) !== null) {
