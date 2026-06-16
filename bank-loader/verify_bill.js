@@ -60,6 +60,16 @@ var verifiers = {
     logic: "A"
   },
 
+  // ============ BOC (PDF) ============
+  BOC: {
+    extractSummary: function(html, billInfo) {
+      return {
+        prevBalance: (billInfo && billInfo.prevBalance) || null,
+        statementBalance: (billInfo && billInfo.statementBalance) || null,
+      };
+    },
+    logic: "B",
+  },
   // ============ BOCOM ============
   BOCOM: {
     extractSummary: function(html) {
@@ -193,7 +203,7 @@ function verifyBill(bankCode, html, transactions, billInfo) {
   var v = verifiers[bankCode.toUpperCase()];
   if (!v) return { ok: true, skipped: true, note: "no verifier for " + bankCode };
 
-  var summary = v.extractSummary(html);
+  var summary = v.extractSummary(html, billInfo);
   // Parser-extracted summary takes priority over verify_bill extraction
   if (billInfo && billInfo.summary) {
     for (var k in billInfo.summary) {
